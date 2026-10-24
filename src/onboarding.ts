@@ -1,5 +1,5 @@
 import { CHARACTERS, renderAvatar } from './avatar';
-import { defaultLimits, formatMoney } from './budget';
+import { formatMoney, isWant, roundBudget, spendingHistory, suggestedLimits, type SpendingHistory } from './budget';
 import { LINE } from './icons';
 import { brand } from './logo';
 import { mergeExpenses, readStatementFile } from './statement';
@@ -11,6 +11,8 @@ interface Draft {
   character: Character;
   name: string;
   budget: number;
+  /** True once the user has picked a budget (or is editing an existing one), so we stop suggesting. */
+  budgetChosen: boolean;
   imported: Expense[];
   importMsg: string;
   importError: boolean;
@@ -18,7 +20,9 @@ interface Draft {
   goal: Goal;
 }
 
-const STEPS = ['Buddy', 'Budget', 'Spending', 'Goals'];
+const STEPS = ['Buddy', 'Spending', 'Budget', 'Goals'];
+const SPENDING = 1;
+const BUDGET = 2;
 const FOCUSABLE: Category[] = CATEGORIES.filter((c) => c !== 'Bills');
 let draft: Draft | null = null;
 
@@ -36,6 +40,7 @@ function newDraft(state: AppState): Draft {
     character: p?.character ?? 'pig',
     name: p?.name ?? '',
     budget: p?.budget ?? 2000,
+    budgetChosen: !!p,
     imported: [],
     importMsg: '',
     importError: false,
@@ -82,6 +87,71 @@ function spendingStep(d: Draft, state: AppState, bank: BankOption | null): strin
         ${d.importMsg ? `<p class="import-msg${d.importError ? ' error' : ''}" role="status">${esc(d.importMsg)}</p>` : ''}`;
 }
 
+/** Everything we know about past spending: bank sync, earlier imports, and the file just uploaded. */
+const historyFor = (d: Draft, state: AppState) => spendingHistory(mergeExpenses(state.expenses, d.imported));
+
+function limitPreview(budget: number, focus: Category[], history: SpendingHistory | null): string {
+  const limits = suggestedLimits(budget, focus, history);
+  return CATEGORIES.map((c) => ({ c, v: limits[c] }))
+    .sort((a, b) => b.v - a.v)
+    .map(
+      ({ c, v }) =>
+        `<li><span>${esc(c)} <small>${isWant(c) ? 'want' : 'need'}${focus.includes(c) ? ', cutting back' : ''}</small></span><b>${formatMoney(v)}</b></li>`,
+    )
+    .join('');
+}
+
+function budgetStep(d: Draft, h: SpendingHistory | null): string {
+  const input = `<div class="money-input"><span>$</span><input name="budget" type="number" min="1" step="1" required value="${d.budget}" aria-label="Monthly budget" /></div>`;
+  const preview = `
+    <p class="q">Your category limits</p>
+    <p class="hint">${h ? 'Shaped by where your money actually goes.' : 'A typical split.'} They update as you change the budget.</p>
+    <ul class="limit-preview" id="limit-preview">${limitPreview(d.budget, d.focus, h)}</ul>`;
+
+  if (!h) {
+    return `
+      <h2>What's your monthly budget?</h2>
+      <p class="hint">How much can you spend each month after savings?</p>
+      ${input}
+      <div class="chips">
+        ${[1000, 2000, 3000, 5000].map((v) => `<button type="button" class="chip" data-budget="${v}">$${v.toLocaleString()}</button>`).join('')}
+      </div>
+      ${preview}`;
+  }
+
+  const wants = CATEGORIES.filter(isWant).reduce((s, c) => s + h.byCategory[c], 0);
+  const top = CATEGORIES.filter((c) => h.byCategory[c] > 0)
+    .sort((a, b) => h.byCategory[b] - h.byCategory[a])
+    .slice(0, 3);
+  const period = h.partial ? 'So far this month' : `Over the last ${h.months === 1 ? 'month' : `${h.months} months`}`;
+  const options = [
+    { label: 'Match my spending', value: roundBudget(h.total) },
+    { label: 'Save 10%', value: roundBudget(h.total * 0.9), suggested: true },
+    { label: 'Save 20%', value: roundBudget(h.total * 0.8) },
+  ];
+  return `
+    <h2>What's your monthly budget?</h2>
+    <div class="spend-summary">
+      <p>${period}, you spent about <b>${formatMoney(h.total)}</b>${h.partial ? '' : ' a month'}.</p>
+      <div class="nw">
+        <div class="need"><small>Needs</small><b>${formatMoney(h.total - wants)}</b></div>
+        <div class="want"><small>Wants</small><b>${formatMoney(wants)}</b></div>
+      </div>
+      <p class="hint">Biggest: ${top.map((c) => `${esc(c)} ${formatMoney(h.byCategory[c])}`).join(' &middot; ')}</p>
+    </div>
+    <p class="hint">We suggest a budget about 10% under what you spend now. Pick one or type your own.</p>
+    ${input}
+    <div class="chips">
+      ${options
+        .map(
+          (o) =>
+            `<button type="button" class="chip${o.suggested ? ' suggested' : ''}" data-budget="${o.value}">${o.label} &middot; ${formatMoney(o.value).replace('.00', '')}</button>`,
+        )
+        .join('')}
+    </div>
+    ${preview}`;
+}
+
 function stepBody(d: Draft): string {
   switch (d.step) {
     case 0:
@@ -99,14 +169,6 @@ function stepBody(d: Draft): string {
         <label class="field">Give your buddy a name
           <input name="name" required maxlength="20" value="${esc(d.name)}" placeholder="e.g. Penny" />
         </label>`;
-    case 1:
-      return `
-        <h2>What's your monthly budget?</h2>
-        <p class="hint">How much can you spend each month after savings?</p>
-        <div class="money-input"><span>$</span><input name="budget" type="number" min="1" step="1" required value="${d.budget}" aria-label="Monthly budget" /></div>
-        <div class="chips">
-          ${[1000, 2000, 3000, 5000].map((v) => `<button type="button" class="chip" data-budget="${v}">$${v.toLocaleString()}</button>`).join('')}
-        </div>`;
     default:
       return `
         <h2>Set your goals</h2>
@@ -148,6 +210,8 @@ export function renderOnboarding(
   const d = draft;
   const rerender = () => renderOnboarding(app, state, done, cancel, bank);
   const spendingDone = !!state.bank || d.imported.length > 0;
+  const history = d.step >= BUDGET ? historyFor(d, state) : null;
+  const body = d.step === SPENDING ? spendingStep(d, state, bank) : d.step === BUDGET ? budgetStep(d, history) : stepBody(d);
 
   app.innerHTML = `
     <main class="onboard card">
@@ -159,10 +223,10 @@ export function renderOnboarding(
         ${STEPS.map((s, i) => `<li class="${i < d.step ? 'done' : ''}${i === d.step ? ' current' : ''}"><span>${i + 1}</span>${s}</li>`).join('')}
       </ol>
       <form id="step-form">
-        ${d.step === 2 ? spendingStep(d, state, bank) : stepBody(d)}
+        ${body}
         <div class="actions">
           ${d.step > 0 ? '<button type="button" class="secondary" id="back">Back</button>' : ''}
-          ${d.step === 2 && !spendingDone ? '' : `<button type="submit">${d.step === STEPS.length - 1 ? "Let's go!" : 'Next'}</button>`}
+          ${d.step === SPENDING && !spendingDone ? '' : `<button type="submit">${d.step === STEPS.length - 1 ? "Let's go!" : 'Next'}</button>`}
         </div>
       </form>
     </main>`;
@@ -179,9 +243,16 @@ export function renderOnboarding(
     d.step--;
     rerender();
   });
+  const budgetInput = form.querySelector<HTMLInputElement>('input[name="budget"]');
+  const updatePreview = () => {
+    const preview = app.querySelector('#limit-preview');
+    if (preview && budgetInput) preview.innerHTML = limitPreview(Math.max(1, Number(budgetInput.value) || 1), d.focus, history);
+  };
+  budgetInput?.addEventListener('input', updatePreview);
   app.querySelectorAll<HTMLButtonElement>('[data-budget]').forEach((b) =>
     b.addEventListener('click', () => {
-      form.querySelector<HTMLInputElement>('input[name="budget"]')!.value = b.dataset.budget!;
+      budgetInput!.value = b.dataset.budget!;
+      updatePreview();
     }),
   );
   app.querySelector<HTMLInputElement>('#statement')?.addEventListener('change', async (e) => {
@@ -207,11 +278,14 @@ export function renderOnboarding(
     if (d.step === 0) {
       d.character = data.get('character') as Character;
       d.name = String(data.get('name')).trim() || 'Buddy';
-    } else if (d.step === 1) {
-      d.budget = Math.max(1, Number(data.get('budget')) || 1);
-    } else if (d.step === 2) {
+    } else if (d.step === SPENDING) {
       const top = topCategory([...d.imported, ...state.expenses]);
       if (top && d.focus.length === 0) d.focus = [top.category];
+      const h = historyFor(d, state);
+      if (h && !d.budgetChosen) d.budget = roundBudget(h.total * 0.9);
+    } else if (d.step === BUDGET) {
+      d.budget = Math.max(1, Number(data.get('budget')) || 1);
+      d.budgetChosen = true;
     } else {
       d.focus = data.getAll('focus').map(String).filter((c): c is Category => FOCUSABLE.includes(c as Category));
       const goal = String(data.get('goal'));
@@ -221,7 +295,7 @@ export function renderOnboarding(
         name: d.name,
         character: d.character,
         budget: d.budget,
-        limits: defaultLimits(d.budget, d.focus),
+        limits: suggestedLimits(d.budget, d.focus, historyFor(d, state)),
         focus: d.focus,
         goal: d.goal,
       };

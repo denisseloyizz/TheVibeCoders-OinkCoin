@@ -210,3 +210,61 @@ export function pastMessage(profile: Profile, a: Analysis, monthName: string): s
       return `${name} fainted in ${monthName}. Wants hit ${pct}% of budget, mostly on ${culprit}.`;
   }
 }
+
+export interface SpendingHistory {
+  /** How many months the averages cover. */
+  months: number;
+  /** True when only the current, unfinished month has data. */
+  partial: boolean;
+  /** Average spending per month. */
+  total: number;
+  byCategory: Record<Category, number>;
+}
+
+/** Average monthly spending over the last three full months (or this month so far if that's all there is). */
+export function spendingHistory(expenses: Expense[], today = new Date()): SpendingHistory | null {
+  const current = localDateKey(today).slice(0, 7);
+  const keys = [...new Set(expenses.map((e) => e.date.slice(0, 7)))].filter((k) => k <= current).sort();
+  const full = keys.filter((k) => k < current);
+  const use = (full.length ? full : keys).slice(-3);
+  if (use.length === 0) return null;
+
+  const byCategory = Object.fromEntries(CATEGORIES.map((c) => [c, 0])) as Record<Category, number>;
+  for (const e of expenses) if (use.includes(e.date.slice(0, 7))) byCategory[e.category] += e.amount;
+  for (const c of CATEGORIES) byCategory[c] = Math.round((byCategory[c] / use.length) * 100) / 100;
+  const total = CATEGORIES.reduce((s, c) => s + byCategory[c], 0);
+  return total > 0 ? { months: use.length, partial: full.length === 0, total, byCategory } : null;
+}
+
+/** A round budget a bit under what you spend now, so it's a real goal. */
+export const roundBudget = (n: number): number => Math.max(50, Math.round(n / 50) * 50);
+
+/**
+ * Category limits shaped like your real spending. Needs get what you actually spend on them (bills
+ * don't shrink because you want to save), so the savings come out of wants. Wants are split by your
+ * history blended with typical shares, and categories you're cutting back on are 20% tighter.
+ */
+export function suggestedLimits(budget: number, focus: Category[], history: SpendingHistory | null): Record<Category, number> {
+  if (!history) return defaultLimits(budget, focus);
+  const h = history.byCategory;
+  const needCats = CATEGORIES.filter((c) => !isWant(c));
+  const wantCats = CATEGORIES.filter(isWant);
+  const round = (n: number) => Math.round(n * 100) / 100;
+  const limits = {} as Record<Category, number>;
+
+  // Needs: past average, or a small allowance for needs with no history yet; never more than 85% of the budget.
+  const needRaw = Object.fromEntries(needCats.map((c) => [c, h[c] > 0 ? h[c] : DEFAULT_SHARES[c] * budget * 0.1])) as Record<Category, number>;
+  const needTotal = needCats.reduce((s, c) => s + needRaw[c], 0);
+  const needScale = Math.min(1, (budget * 0.85) / needTotal);
+  for (const c of needCats) limits[c] = round(needRaw[c] * needScale);
+
+  // Wants: whatever is left, split by history blended with typical shares.
+  const wantsRoom = budget - needCats.reduce((s, c) => s + limits[c], 0);
+  const wantHist = wantCats.reduce((s, c) => s + h[c], 0);
+  const wantDefault = wantCats.reduce((s, c) => s + DEFAULT_SHARES[c], 0);
+  for (const c of wantCats) {
+    const share = wantHist > 0 ? 0.7 * (h[c] / wantHist) + 0.3 * (DEFAULT_SHARES[c] / wantDefault) : DEFAULT_SHARES[c] / wantDefault;
+    limits[c] = round(wantsRoom * share * (focus.includes(c) ? 0.8 : 1));
+  }
+  return limits;
+}

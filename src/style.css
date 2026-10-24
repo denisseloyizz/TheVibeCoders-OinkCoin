@@ -531,3 +531,12 @@ button.link:hover { background: none; text-decoration: underline; }
 .source small { color: var(--muted); font-weight: 400; }
 .source input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .source:disabled { opacity: 0.6; cursor: default; }
+
+/* Onboarding: budget suggestions */
+.spend-summary { background: var(--gold-soft); border-radius: 14px; padding: 0.9rem 1rem; margin: 0.5rem 0 1rem; }
+.spend-summary p { margin: 0 0 0.5rem; }
+.spend-summary .hint { margin: 0.5rem 0 0; }
+.chip.suggested { border-color: var(--pink); background: var(--pink-soft); }
+.limit-preview { list-style: none; margin: 0; padding: 0; }
+.limit-preview li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+.limit-preview small { color: var(--muted); }
