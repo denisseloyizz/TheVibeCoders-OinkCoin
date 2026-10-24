@@ -35,6 +35,7 @@ export function readState(raw: string | object | null): AppState {
       return {
         profile: p ? ({ focus: [], goal: 'Just track my spending', ...p } as Profile) : null,
         expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
+        income: Array.isArray(parsed.income) ? parsed.income : [],
         care: parsed.care ?? freshCare(),
         coins: typeof parsed.coins === 'number' ? parsed.coins : 0,
         rewards: Array.isArray(parsed.rewards) ? parsed.rewards : [],
@@ -54,7 +55,7 @@ export function readState(raw: string | object | null): AppState {
 }
 
 export function emptyState(): AppState {
-  return { profile: null, expenses: [], care: freshCare(), coins: 0, rewards: [], alerts: [], notices: [], owned: [], equipped: {}, house: {}, bank: null, savedAt: 0 };
+  return { profile: null, expenses: [], income: [], care: freshCare(), coins: 0, rewards: [], alerts: [], notices: [], owned: [], equipped: {}, house: {}, bank: null, savedAt: 0 };
 }
 
 export function saveState(state: AppState): void {

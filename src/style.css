@@ -602,3 +602,11 @@ button.link:hover { background: none; text-decoration: underline; }
 .notices p { margin: 0 0 0.15rem; }
 .notices small { color: var(--muted); }
 .notice-icon svg { width: 24px; height: 24px; display: block; }
+
+/* Cash flow */
+.flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 0.5rem; }
+.flow div { background: #faf8f9; border-radius: 12px; padding: 0.6rem; text-align: center; }
+.flow small { display: block; color: var(--muted); }
+.flow b { font-size: 1.05rem; }
+.cash > .hint { margin: 0.5rem 0 0.75rem; }
+.cash > button { width: 100%; }

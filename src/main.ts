@@ -30,7 +30,7 @@ import { brand } from './logo';
 import { renderOnboarding } from './onboarding';
 import { renderArc, renderCategoryDetail, renderCategoryList } from './ring';
 import { COINS_PER_GOAL, findNewAwards } from './rewards';
-import { mergeExpenses, readStatementFile } from './statement';
+import { mergeExpenses, mergeIncome, readStatementFile } from './statement';
 import { clearState, emptyState, loadState, saveLocalOnly, saveState, setSaveListener } from './storage';
 import {
   acceptFriend,
@@ -47,7 +47,7 @@ import {
   type FriendsData,
 } from './social';
 import { renderStore } from './store';
-import { CATEGORIES, type Care, type Category, type Expense, type Mood, type NoticeKind, type Profile } from './types';
+import { CATEGORIES, type Care, type Category, type Expense, type Income, type Mood, type NoticeKind, type Profile } from './types';
 import { esc } from './util';
 
 type View = 'buddy' | 'history' | 'friends' | 'notifications' | 'report' | 'store' | 'settings' | 'learn';
@@ -64,6 +64,7 @@ let settingUpTwoFactor = false;
 let cloudLoading = false;
 let goalsOpen = false;
 let categoriesOpen = false;
+let cashOpen = false;
 let friendsData: FriendsData | null = null;
 let friendsLoading = false;
 let friendsFailed = false;
@@ -191,6 +192,7 @@ async function syncNow(quiet: boolean): Promise<void> {
     const r = await syncBank();
     const before = state.expenses.length;
     state.expenses = mergeExpenses(state.expenses, r.expenses);
+    state.income = mergeIncome(state.income, r.income);
     state.bank = r.linked ? { accounts: r.accounts, syncedAt: Date.now() } : null;
     saveState(state);
     added = state.expenses.length - before;
@@ -445,6 +447,8 @@ function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): str
 
     ${renderGoals(state, profile, view, goalsOpen)}
 
+    ${cashFlowCard(view)}
+
     <section class="card">${renderCategoryDetail(selected, view.spent)}</section>
 
     ${categoriesCard(view, selected.category)}
@@ -503,6 +507,66 @@ function historyHtml(profile: Profile, now: Analysis, mood: Mood): string {
     </section>`;
 }
 
+const wholeDollars = (n: number) => formatMoney(Math.round(n)).replace(/\.00$/, '');
+const incomeIn = (monthKey: string) => state.income.filter((i) => i.date.startsWith(monthKey));
+
+/** Money in vs money out this month, folded to one line ("Cash flow · +$800 left"). */
+function cashFlowCard(a: Analysis): string {
+  const moneyIn = incomeIn(a.monthKey).reduce((s, i) => s + i.amount, 0);
+  const left = moneyIn - a.spent;
+  const summary = moneyIn > 0 ? `${left >= 0 ? '+' : '−'}${wholeDollars(Math.abs(left))} left` : 'Add your income';
+  const hint =
+    moneyIn === 0
+      ? 'Add your paychecks or other income to see what you have left over.'
+      : left >= 0
+        ? `You kept ${Math.round((left / moneyIn) * 100)}% of what came in.`
+        : `You spent ${wholeDollars(-left)} more than came in.`;
+  return `
+    <details class="card fold cash" id="cash-card" ${cashOpen ? 'open' : ''}>
+      <summary class="fold-head">
+        <h2>Cash flow</h2>
+        <span class="fold-count ${moneyIn === 0 ? '' : left >= 0 ? 'pos' : 'neg'}">${summary}</span>
+      </summary>
+      <div class="flow">
+        <div><small>Money in</small><b class="pos">${wholeDollars(moneyIn)}</b></div>
+        <div><small>Money out</small><b class="neg">${wholeDollars(a.spent)}</b></div>
+        <div><small>Left over</small><b class="${left >= 0 ? 'pos' : 'neg'}">${left < 0 ? '−' : ''}${wholeDollars(Math.abs(left))}</b></div>
+      </div>
+      ${moneyIn > 0 ? `<div class="bar"><div class="fill ${a.spent > moneyIn ? 'over' : a.spent > moneyIn * 0.8 ? 'warn' : 'ok'}" style="width:${Math.min(100, Math.round((a.spent / moneyIn) * 100))}%"></div></div>` : ''}
+      <p class="hint">${esc(hint)}</p>
+      <button class="secondary" data-view="report">Add money in</button>
+    </details>`;
+}
+
+function incomeSection(monthKey: string): string {
+  const list = incomeIn(monthKey).sort((x, y) => y.date.localeCompare(x.date));
+  return `
+    <section class="card">
+      <h2>Money in</h2>
+      <p class="hint">Paychecks and deposits from your bank or statement show up here. Add cash income yourself.</p>
+      <form id="income-form" class="expense-form">
+        <input name="amount" type="number" min="0.01" step="0.01" placeholder="Amount" aria-label="Amount" required />
+        <input name="note" maxlength="60" placeholder="Paycheck, side job..." aria-label="What it was" />
+        <input name="date" type="date" value="${localDateKey()}" aria-label="Date" required />
+        <button type="submit">Add money in</button>
+      </form>
+      ${
+        list.length
+          ? `<ul class="expenses">${list
+              .map(
+                (i: Income) => `
+            <li>
+              <div><strong>${esc(i.note || 'Income')}</strong><br /><small>${esc(i.date)}</small></div>
+              <span class="pos">+${formatMoney(i.amount)}</span>
+              <button class="icon" data-delete-income="${esc(i.id)}" aria-label="Delete income">&times;</button>
+            </li>`,
+              )
+              .join('')}</ul>`
+          : '<p class="empty">No money in this month yet.</p>'
+      }
+    </section>`;
+}
+
 /** Folded to one line ("Spending categories · 2 over limit") until opened. */
 function categoriesCard(a: Analysis, selected: Category): string {
   const over = a.categories.filter((c) => c.spent > 0 && c.ratio > 1).length;
@@ -538,6 +602,8 @@ function reportHtml(profile: Profile, view: Analysis): string {
     </section>
 
     ${categoriesCard(view, selected.category)}
+
+    ${incomeSection(view.monthKey)}
 
     <section class="card">
       <h2>Add expense</h2>
@@ -760,6 +826,9 @@ function renderDashboard(profile: Profile): void {
   // Keep the goals card open or closed across re-renders.
   app.querySelector<HTMLDetailsElement>('#goals-card')?.addEventListener('toggle', (e) => {
     goalsOpen = (e.target as HTMLDetailsElement).open;
+  });
+  app.querySelector<HTMLDetailsElement>('#cash-card')?.addEventListener('toggle', (e) => {
+    cashOpen = (e.target as HTMLDetailsElement).open;
   });
   app.querySelector<HTMLDetailsElement>('#categories-card')?.addEventListener('toggle', (e) => {
     categoriesOpen = (e.target as HTMLDetailsElement).open;
@@ -1063,13 +1132,36 @@ function renderDashboard(profile: Profile): void {
     try {
       const incoming = await readStatementFile(file);
       const before = state.expenses.length;
-      state.expenses = mergeExpenses(state.expenses, incoming);
-      moneyMsg = `Imported ${state.expenses.length - before} new transactions.`;
+      const beforeIn = state.income.length;
+      state.expenses = mergeExpenses(state.expenses, incoming.expenses);
+      state.income = mergeIncome(state.income, incoming.income);
+      const deposits = state.income.length - beforeIn;
+      moneyMsg = `Imported ${state.expenses.length - before} new purchases${deposits ? ` and ${deposits} deposit${deposits === 1 ? '' : 's'}` : ''}.`;
     } catch (err) {
       moneyMsg = err instanceof Error ? err.message : 'Could not read that file.';
     }
     persist();
   });
+  const incomeForm = app.querySelector<HTMLFormElement>('#income-form');
+  incomeForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const data = new FormData(incomeForm);
+    const amount = Number(data.get('amount'));
+    if (!(amount > 0)) return;
+    state.income.push({
+      id: crypto.randomUUID(),
+      amount: Math.round(amount * 100) / 100,
+      note: String(data.get('note') ?? '').trim(),
+      date: String(data.get('date')),
+    });
+    persist();
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-delete-income]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      state.income = state.income.filter((i) => i.id !== btn.dataset.deleteIncome);
+      persist();
+    }),
+  );
   app.querySelectorAll<HTMLButtonElement>('[data-delete]').forEach((btn) =>
     btn.addEventListener('click', () => {
       state.expenses = state.expenses.filter((e) => e.id !== btn.dataset.delete);

@@ -22,6 +22,14 @@ export interface Expense {
   date: string; // YYYY-MM-DD
 }
 
+/** Money coming in: paychecks, deposits, cash income. Kept apart from spending. */
+export interface Income {
+  id: string;
+  amount: number;
+  note: string;
+  date: string; // YYYY-MM-DD
+}
+
 export interface Profile {
   name: string;
   character: Character;
@@ -70,6 +78,7 @@ export interface Notice {
 export interface AppState {
   profile: Profile | null;
   expenses: Expense[];
+  income: Income[];
   care: Care;
   coins: number;
   /** Keys of goals already rewarded, e.g. "week:2026-10-05" or "month:2026-09". */

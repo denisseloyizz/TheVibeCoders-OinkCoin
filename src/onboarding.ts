@@ -2,8 +2,8 @@ import { CHARACTERS, renderAvatar } from './avatar';
 import { formatMoney, isWant, roundBudget, spendingHistory, suggestedLimits, type SpendingHistory } from './budget';
 import { LINE } from './icons';
 import { brand } from './logo';
-import { mergeExpenses, readStatementFile } from './statement';
-import { CATEGORIES, GOALS, type AppState, type Category, type Character, type Expense, type Goal } from './types';
+import { mergeExpenses, mergeIncome, readStatementFile } from './statement';
+import { CATEGORIES, GOALS, type AppState, type Category, type Character, type Expense, type Goal, type Income } from './types';
 import { esc } from './util';
 
 interface Draft {
@@ -14,6 +14,7 @@ interface Draft {
   /** True once the user has picked a budget (or is editing an existing one), so we stop suggesting. */
   budgetChosen: boolean;
   imported: Expense[];
+  importedIncome: Income[];
   importMsg: string;
   importError: boolean;
   focus: Category[];
@@ -42,6 +43,7 @@ function newDraft(state: AppState): Draft {
     budget: p?.budget ?? 2000,
     budgetChosen: !!p,
     imported: [],
+    importedIncome: [],
     importMsg: '',
     importError: false,
     focus: p?.focus ?? [],
@@ -269,12 +271,16 @@ export function renderOnboarding(
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
     try {
-      d.imported = await readStatementFile(file);
+      const statement = await readStatementFile(file);
+      d.imported = statement.expenses;
+      d.importedIncome = statement.income;
       const top = topCategory(d.imported);
-      d.importMsg = `Imported ${d.imported.length} transactions.${top ? ` Outside of bills, you spend the most on ${top.category} (${formatMoney(top.total)}).` : ''}`;
+      const deposits = d.importedIncome.length ? ` and ${d.importedIncome.length} deposit${d.importedIncome.length === 1 ? '' : 's'}` : '';
+      d.importMsg = `Imported ${d.imported.length} purchases${deposits}.${top ? ` Outside of bills, you spend the most on ${top.category} (${formatMoney(top.total)}).` : ''}`;
       d.importError = false;
     } catch (err) {
       d.imported = [];
+      d.importedIncome = [];
       d.importMsg = err instanceof Error ? err.message : 'Could not read that file.';
       d.importError = true;
     }
@@ -310,6 +316,7 @@ export function renderOnboarding(
         goal: d.goal,
       };
       state.expenses = mergeExpenses(state.expenses, d.imported);
+      state.income = mergeIncome(state.income, d.importedIncome);
       draft = null;
       done();
       return;
