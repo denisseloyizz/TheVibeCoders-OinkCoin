@@ -1,7 +1,7 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { LINE } from './icons';
 import { brand } from './logo';
-import { openedFromRecoveryLink, supabase } from './supabase';
+import { authLinkError, openedFromRecoveryLink, supabase } from './supabase';
 import { esc } from './util';
 
 // With Supabase configured, accounts live on the server. Without it they fall back to
@@ -297,9 +297,14 @@ const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const isEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const pageUrl = () => location.origin + location.pathname;
 
-let mode: 'signup' | 'login' | 'forgot' | null = null;
-let authMsg = '';
-let authError = false;
+// An email link that came back with an error: explain it instead of silently showing the login form.
+let mode: 'signup' | 'login' | 'forgot' | null = authLinkError ? 'forgot' : null;
+let authMsg = authLinkError
+  ? authLinkError === 'otp_expired'
+    ? 'That email link has expired or was already used. Links only work once, so request a new one below.'
+    : 'That email link did not work. Request a new one below.'
+  : '';
+let authError = !!authLinkError;
 /** Last email typed, so switching screens keeps it and "resend" knows where to send. */
 let lastEmail = '';
 let canResend = false;
