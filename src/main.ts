@@ -19,6 +19,7 @@ import { cancelCloudSave, cloudEnabled, flushCloudSave, loadCloudState, queueClo
 import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, isOAuthReturn, resumeBankLink, syncBank } from './bank';
 import { analyze, formatMoney, localDateKey, pastMessage, type Analysis } from './budget';
 import { applyAction, careMood, careNote, currentCare, type CareAction } from './care';
+import { renderGoals } from './goals';
 import { ICONS, LINE, line } from './icons';
 import { renderLearn } from './learn';
 import { brand } from './logo';
@@ -326,6 +327,8 @@ function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): str
       ${view.tip ? `<p class="tip">${LINE.bulb}<span>${esc(view.tip)}</span></p>` : ''}
     </section>
 
+    ${renderGoals(state, profile, view)}
+
     <section class="card">${renderCategoryDetail(selected, view.spent)}</section>
 
     <section class="card">
@@ -466,7 +469,7 @@ function settingsHtml(profile: Profile): string {
         <div><dt>Coins</dt><dd>${state.coins}</dd></div>
         <div><dt>Transactions saved</dt><dd>${state.expenses.length}</dd></div>
       </dl>
-      <button id="edit">Edit buddy, budget &amp; quiz</button>
+      <button id="edit">Edit buddy, budget &amp; goals</button>
     </section>
 
     <section class="card settings">
