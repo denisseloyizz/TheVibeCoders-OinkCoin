@@ -38,6 +38,7 @@ export function readState(raw: string | object | null): AppState {
         care: parsed.care ?? freshCare(),
         coins: typeof parsed.coins === 'number' ? parsed.coins : 0,
         rewards: Array.isArray(parsed.rewards) ? parsed.rewards : [],
+        alerts: Array.isArray(parsed.alerts) ? parsed.alerts : [],
         owned: Array.isArray(parsed.owned) ? parsed.owned : [],
         equipped: parsed.equipped ?? {},
         house: parsed.house ?? {},
@@ -52,7 +53,7 @@ export function readState(raw: string | object | null): AppState {
 }
 
 export function emptyState(): AppState {
-  return { profile: null, expenses: [], care: freshCare(), coins: 0, rewards: [], owned: [], equipped: {}, house: {}, bank: null, savedAt: 0 };
+  return { profile: null, expenses: [], care: freshCare(), coins: 0, rewards: [], alerts: [], owned: [], equipped: {}, house: {}, bank: null, savedAt: 0 };
 }
 
 export function saveState(state: AppState): void {

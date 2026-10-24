@@ -63,6 +63,8 @@ export interface AppState {
   coins: number;
   /** Keys of goals already rewarded, e.g. "week:2026-10-05" or "month:2026-09". */
   rewards: string[];
+  /** Spending alerts already shown, e.g. "2026-10:Shopping", so each shows once a month. */
+  alerts: string[];
   owned: string[];
   equipped: Equipped;
   /** Decor placed in the buddy's house, by slot (see house.ts). */

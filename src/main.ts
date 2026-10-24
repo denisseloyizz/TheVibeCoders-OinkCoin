@@ -58,7 +58,6 @@ let stateOwner = '';
 let autoSynced = false;
 let bankBusy = false;
 let bankMsg = '';
-const alerted = new Set<string>();
 let editing = false;
 let managingConsent = false;
 let settingUpTwoFactor = false;
@@ -109,12 +108,19 @@ const CARE_BUTTONS: { action: CareAction; stat: 'hunger' | 'fun' | 'love'; label
 const STAT_NAME = { hunger: 'Hunger', fun: 'Fun', love: 'Love' };
 const careLabel = (b: (typeof CARE_BUTTONS)[number], value: number) => `${b.label} (${STAT_NAME[b.stat]} ${value}%)`;
 
+/** Pop-ups stack in one column at the top, so several at once don't cover each other. */
 function showToast(html: string): void {
+  let stack = document.querySelector<HTMLElement>('.toasts');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.className = 'toasts';
+    document.body.append(stack);
+  }
   const toast = document.createElement('div');
   toast.className = 'toast';
   toast.setAttribute('role', 'status');
   toast.innerHTML = html;
-  document.body.append(toast);
+  stack.append(toast);
   requestAnimationFrame(() => toast.classList.add('show'));
   setTimeout(() => {
     toast.classList.remove('show');
@@ -140,16 +146,18 @@ function persist(): void {
 const DAY = 24 * 60 * 60 * 1000;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : 'Something went wrong. Try again.');
 
+/** Spending alerts (an optional bank permission): one pop-up listing categories that newly passed 90% this month. */
 function checkAlerts(): void {
   if (!state.profile || !currentUser()?.consent?.scopes.includes('alerts')) return;
   const now = analyze(state.profile, state.expenses);
-  for (const c of now.categories) {
-    const key = `${now.monthKey}:${c.category}`;
-    if (c.limit <= 0 || c.ratio < 0.9 || alerted.has(key)) continue;
-    alerted.add(key);
-    const pct = Math.round(c.ratio * 100);
-    showToast(`${LINE.bulb}<span>Heads up: you've used <b>${pct}%</b> of your ${esc(c.category)} budget.</span>`);
-  }
+  const fresh = now.categories.filter((c) => c.limit > 0 && c.ratio >= 0.9 && !state.alerts.includes(`${now.monthKey}:${c.category}`));
+  if (fresh.length === 0) return;
+  // Remember them with the account (older months dropped) so they don't pop up again on every open.
+  state.alerts = [...state.alerts.filter((k) => k.startsWith(now.monthKey)), ...fresh.map((c) => `${now.monthKey}:${c.category}`)];
+  saveState(state);
+  const list = fresh.map((c) => `${esc(c.category)} <b>${Math.round(c.ratio * 100)}%</b>`);
+  const joined = list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+  showToast(`${LINE.bulb}<span>Spending alert: ${joined} of this month's limit${fresh.length === 1 ? '' : 's'}.</span>`);
 }
 
 async function syncNow(quiet: boolean): Promise<void> {
@@ -294,7 +302,6 @@ function render(): void {
     autoSynced = false;
     bankMsg = '';
     view = 'buddy';
-    alerted.clear();
     if (cloudEnabled) {
       cloudLoading = true;
       void pullFromCloud();
