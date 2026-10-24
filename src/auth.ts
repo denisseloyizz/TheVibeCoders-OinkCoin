@@ -1,7 +1,7 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { LINE } from './icons';
 import { brand } from './logo';
-import { supabase } from './supabase';
+import { openedFromRecoveryLink, supabase } from './supabase';
 import { esc } from './util';
 
 // With Supabase configured, accounts live on the server. Without it they fall back to
@@ -54,15 +54,24 @@ const saveLocal = (account: LocalAccount) => localStorage.setItem(ACCOUNT_KEY, J
 const fromSupabase = (u: SupabaseUser | undefined): User | null =>
   u?.email ? { email: u.email, consent: (u.user_metadata?.consent as Consent | undefined) ?? null } : null;
 
-export async function initAuth(onSignedOut: () => void): Promise<void> {
+let recovering = openedFromRecoveryLink;
+/** True after opening a password reset link, until a new password is saved. */
+export const needsNewPassword = (): boolean => recovering;
+
+/** onChange runs when the user is signed out elsewhere or arrives from a password reset link. */
+export async function initAuth(onChange: () => void): Promise<void> {
   if (supabase) {
+    supabase.auth.onAuthStateChange((event, session) => {
+      user = fromSupabase(session?.user);
+      if (event === 'PASSWORD_RECOVERY' && !recovering) {
+        recovering = true;
+        onChange();
+      }
+      if (event === 'SIGNED_OUT') onChange();
+    });
     const { data } = await supabase.auth.getSession();
     user = fromSupabase(data.session?.user);
     await refreshTwoFactor();
-    supabase.auth.onAuthStateChange((event, session) => {
-      user = fromSupabase(session?.user);
-      if (event === 'SIGNED_OUT') onSignedOut();
-    });
     return;
   }
   const local = loadLocal();
@@ -264,7 +273,8 @@ async function signUp(email: string, password: string): Promise<boolean> {
 async function logIn(email: string, password: string): Promise<void> {
   if (supabase) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw new Error(error.code === 'email_not_confirmed' ? 'Confirm your email first, then log in.' : 'Email or password is incorrect.');
+    if (error?.code === 'email_not_confirmed') throw new UnconfirmedError();
+    if (error) throw new Error('Email or password is incorrect.');
     user = fromSupabase(data.user);
     await refreshTwoFactor();
     return;
@@ -277,17 +287,119 @@ async function logIn(email: string, password: string): Promise<void> {
   user = { email, consent: local.consent };
 }
 
-const normalizeEmail = (email: string) => email.trim().toLowerCase();
+class UnconfirmedError extends Error {
+  constructor() {
+    super('Confirm your email first, then log in. Check your spam folder too.');
+  }
+}
 
-let mode: 'signup' | 'login' | null = null;
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+const isEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const pageUrl = () => location.origin + location.pathname;
+
+let mode: 'signup' | 'login' | 'forgot' | null = null;
 let authMsg = '';
 let authError = false;
+/** Last email typed, so switching screens keeps it and "resend" knows where to send. */
+let lastEmail = '';
+let canResend = false;
+
+const messageHtml = () =>
+  authMsg ? `<p class="import-msg${authError ? ' error' : ''}" role="${authError ? 'alert' : 'status'}">${esc(authMsg)}</p>` : '';
+
+function renderForgot(app: HTMLElement, done: () => void): void {
+  const rerender = () => renderAuth(app, done);
+  app.innerHTML = `
+    <main class="onboard card auth">
+      <div class="onboard-head">${brand()}</div>
+      <h2>Reset your password</h2>
+      <p class="hint">Enter your email and we'll send you a link to choose a new password.</p>
+      <form id="forgot-form" novalidate>
+        <label class="field">Email
+          <input name="email" type="email" autocomplete="email" required value="${esc(lastEmail)}" placeholder="you@example.com" />
+        </label>
+        ${messageHtml()}
+        <div class="actions"><button type="submit">Send reset link</button></div>
+      </form>
+      <p class="auth-switch"><button type="button" class="link" id="back-login">Back to log in</button></p>
+    </main>`;
+  app.querySelector('#back-login')!.addEventListener('click', () => {
+    mode = 'login';
+    authMsg = '';
+    rerender();
+  });
+  const form = app.querySelector<HTMLFormElement>('#forgot-form')!;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    lastEmail = normalizeEmail(String(new FormData(form).get('email')));
+    authError = true;
+    if (!isEmail(lastEmail)) {
+      authMsg = 'Enter a valid email address.';
+      return rerender();
+    }
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = true;
+    const { error } = await supabase!.auth.resetPasswordForEmail(lastEmail, { redirectTo: pageUrl() });
+    // Same answer whether or not the account exists, so the form can't be used to look up emails.
+    authMsg = error?.status === 429 ? 'Too many emails sent. Wait a few minutes and try again.' : "If there's an account for that email, a reset link is on its way. Check your spam folder too.";
+    authError = error?.status === 429;
+    rerender();
+  });
+}
+
+/** Shown after opening a password reset link: pick a new password. */
+export function renderNewPassword(app: HTMLElement, done: () => void): void {
+  if (!user) {
+    // The link expired or was already used.
+    recovering = false;
+    mode = 'forgot';
+    authMsg = 'That reset link has expired. Request a new one.';
+    authError = true;
+    return renderAuth(app, done);
+  }
+  app.innerHTML = `
+    <main class="onboard card auth">
+      <div class="onboard-head">${brand()}</div>
+      <h2>Choose a new password</h2>
+      <p class="hint">For ${esc(user.email)}</p>
+      <form id="new-password-form" novalidate>
+        <label class="field">New password
+          <input name="password" type="password" autocomplete="new-password" required minlength="${MIN_PASSWORD}" />
+        </label>
+        <label class="field">Confirm new password
+          <input name="confirm" type="password" autocomplete="new-password" required minlength="${MIN_PASSWORD}" />
+        </label>
+        <p class="import-msg error" id="new-password-error" role="alert" hidden></p>
+        <div class="actions"><button type="submit">Save password</button></div>
+      </form>
+    </main>`;
+  const form = app.querySelector<HTMLFormElement>('#new-password-form')!;
+  const msg = form.querySelector<HTMLElement>('#new-password-error')!;
+  const fail = (text: string) => {
+    msg.textContent = text;
+    msg.hidden = false;
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = false;
+  };
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = new FormData(form);
+    const password = String(data.get('password'));
+    if (password.length < MIN_PASSWORD) return fail(`Password must be at least ${MIN_PASSWORD} characters.`);
+    if (password !== String(data.get('confirm'))) return fail('Passwords do not match.');
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = true;
+    const { error } = await supabase!.auth.updateUser({ password });
+    if (error) return fail(error.message);
+    recovering = false;
+    done();
+  });
+}
 
 export function renderAuth(app: HTMLElement, done: () => void): void {
   const remembered = supabase ? null : loadLocal();
   mode ??= supabase || remembered ? 'login' : 'signup';
+  if (mode === 'forgot' && supabase) return renderForgot(app, done);
   const signup = mode === 'signup';
   const rerender = () => renderAuth(app, done);
+  lastEmail ||= remembered?.email ?? '';
 
   app.innerHTML = `
     <main class="onboard card auth">
@@ -296,7 +408,7 @@ export function renderAuth(app: HTMLElement, done: () => void): void {
       <p class="hint">${signup ? 'Sign up to start budgeting with your buddy.' : 'Log in to check on your buddy.'}</p>
       <form id="auth-form" novalidate>
         <label class="field">Email
-          <input name="email" type="email" autocomplete="email" required value="${esc(signup ? '' : (remembered?.email ?? ''))}" placeholder="you@example.com" />
+          <input name="email" type="email" autocomplete="email" required value="${esc(lastEmail)}" placeholder="you@example.com" />
         </label>
         <label class="field">Password
           <input name="password" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" required minlength="${MIN_PASSWORD}" />
@@ -308,7 +420,9 @@ export function renderAuth(app: HTMLElement, done: () => void): void {
               </label>`
             : ''
         }
-        ${authMsg ? `<p class="import-msg${authError ? ' error' : ''}" role="${authError ? 'alert' : 'status'}">${esc(authMsg)}</p>` : ''}
+        ${!signup && supabase ? '<p class="forgot"><button type="button" class="link" id="forgot">Forgot password?</button></p>' : ''}
+        ${messageHtml()}
+        ${canResend && supabase ? '<p class="forgot"><button type="button" class="link" id="resend">Resend confirmation email</button></p>' : ''}
         <div class="actions"><button type="submit">${signup ? 'Sign up' : 'Log in'}</button></div>
       </form>
       <p class="auth-switch">
@@ -318,17 +432,38 @@ export function renderAuth(app: HTMLElement, done: () => void): void {
       ${signup ? `<p class="auth-switch legal">By signing up you agree to our ${PRIVACY_LINK}.</p>` : ''}
     </main>`;
 
+  const form = app.querySelector<HTMLFormElement>('#auth-form')!;
+  const keepEmail = () => (lastEmail = normalizeEmail(String(new FormData(form).get('email'))));
+
   app.querySelector('#switch')!.addEventListener('click', () => {
+    keepEmail();
     mode = signup ? 'login' : 'signup';
     authMsg = '';
+    canResend = false;
+    rerender();
+  });
+  app.querySelector('#forgot')?.addEventListener('click', () => {
+    keepEmail();
+    mode = 'forgot';
+    authMsg = '';
+    canResend = false;
+    rerender();
+  });
+  app.querySelector('#resend')?.addEventListener('click', async () => {
+    const { error } = await supabase!.auth.resend({ type: 'signup', email: lastEmail, options: { emailRedirectTo: pageUrl() } });
+    authError = !!error;
+    authMsg = error
+      ? error.status === 429
+        ? 'Too many emails sent. Wait a few minutes and try again.'
+        : error.message
+      : `Sent another confirmation email to ${lastEmail}. Check your spam folder too.`;
     rerender();
   });
 
-  const form = app.querySelector<HTMLFormElement>('#auth-form')!;
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = new FormData(form);
-    const email = normalizeEmail(String(data.get('email')));
+    const email = keepEmail();
     const password = String(data.get('password'));
     const show = (msg: string, error = true) => {
       authMsg = msg;
@@ -336,7 +471,7 @@ export function renderAuth(app: HTMLElement, done: () => void): void {
       rerender();
     };
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show('Enter a valid email address.');
+    if (!isEmail(email)) return show('Enter a valid email address.');
     if (password.length < MIN_PASSWORD) return show(`Password must be at least ${MIN_PASSWORD} characters.`);
     if (signup && password !== String(data.get('confirm'))) return show('Passwords do not match.');
 
@@ -344,14 +479,17 @@ export function renderAuth(app: HTMLElement, done: () => void): void {
     try {
       if (signup && !(await signUp(email, password))) {
         mode = 'login';
-        return show('Check your inbox to confirm your email, then log in.', false);
+        canResend = true;
+        return show('Check your inbox to confirm your email, then log in. Check your spam folder too.', false);
       }
       if (!signup) await logIn(email, password);
     } catch (err) {
+      canResend = err instanceof UnconfirmedError;
       return show(err instanceof Error ? err.message : 'Something went wrong. Try again.');
     }
     mode = null;
     authMsg = '';
+    canResend = false;
     done();
   });
 }

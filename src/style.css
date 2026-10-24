@@ -517,3 +517,4 @@ button.link:hover { background: none; text-decoration: underline; }
 .mood-chip { display: inline-block; min-width: 5.5rem; }
 .goal-main { margin: 0.5rem 0 0; font-size: 0.9rem; }
 .goal-main button.link { font-size: inherit; }
+.auth .forgot { margin: -0.5rem 0 0.75rem; text-align: right; font-size: 0.85rem; }

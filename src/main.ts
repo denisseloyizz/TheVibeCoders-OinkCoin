@@ -5,9 +5,11 @@ import {
   deleteLocalAccount,
   disableTwoFactor,
   initAuth,
+  needsNewPassword,
   needsTwoFactor,
   renderAuth,
   renderConsent,
+  renderNewPassword,
   renderTwoFactorChallenge,
   renderTwoFactorSetup,
   SCOPES,
@@ -190,6 +192,10 @@ async function logOut(): Promise<void> {
 
 function render(): void {
   const user = currentUser();
+  if (needsNewPassword()) {
+    renderNewPassword(app, render);
+    return;
+  }
   if (!user) {
     renderAuth(app, render);
     return;
