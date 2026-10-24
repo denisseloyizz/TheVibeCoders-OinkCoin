@@ -113,5 +113,6 @@ GitHub Pages serves the built site from `docs/` on `main`:
 npm run build
 ```
 
-Commit the updated `docs/` folder. The build includes the Supabase URL and publishable key from `.env`,
-which are safe to be public.
+Commit and push the updated `docs/` folder to `main`; the `Deploy to GitHub Pages` workflow publishes it
+in about a minute. Build locally, because the build includes the Supabase URL and publishable key from
+`.env` (safe to be public), which GitHub doesn't have.
