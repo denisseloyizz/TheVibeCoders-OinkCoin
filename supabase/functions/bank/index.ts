@@ -32,7 +32,8 @@ async function plaid(path: string, body: Record<string, unknown>): Promise<any> 
   const data = await res.json();
   if (!res.ok) {
     console.error(path, data.error_code, data.error_message);
-    throw new HttpError(502, data.display_message ?? 'Your bank could not be reached. Try again later.');
+    const fallback = PLAID_ENV === 'sandbox' ? `Plaid error: ${data.error_code}` : 'Your bank could not be reached. Try again later.';
+    throw new HttpError(502, data.display_message ?? fallback);
   }
   return data;
 }
