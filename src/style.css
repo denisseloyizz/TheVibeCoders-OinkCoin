@@ -510,6 +510,8 @@ button.link:hover { background: none; text-decoration: underline; }
 .fold-head::-webkit-details-marker { display: none; }
 .fold-head h2 { margin: 0; }
 .fold-count { margin-left: auto; font-size: 0.8rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.fold-count.neg { color: var(--over); }
+.fold-count.pos { color: var(--green); }
 .fold-head::after { content: ''; flex: none; width: 8px; height: 8px; margin: 0 0.2rem 0.25rem; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform 0.2s; }
 .fold[open] > .fold-head { margin-bottom: 0.75rem; }
 .fold[open] > .fold-head::after { transform: rotate(-135deg); margin-bottom: -0.25rem; }
