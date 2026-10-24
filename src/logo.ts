@@ -1,0 +1,23 @@
+let n = 0;
+
+export function coinLogo(size = 44): string {
+  const id = `coin${++n}`;
+  return `<svg class="coin-logo" width="${size}" height="${size}" viewBox="0 0 64 64" aria-hidden="true">
+    <defs>
+      <linearGradient id="${id}-g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#fff07a"/><stop offset=".55" stop-color="#ffc93c"/><stop offset="1" stop-color="#f2a100"/>
+      </linearGradient>
+    </defs>
+    <circle cx="32" cy="34" r="28" fill="#d98a00"/>
+    <circle cx="32" cy="31" r="28" fill="url(#${id}-g)"/>
+    <circle cx="32" cy="31" r="21.5" fill="none" stroke="#e8a200" stroke-width="2" stroke-dasharray="3 2.5"/>
+    <ellipse cx="32" cy="31" rx="12.5" ry="9.5" fill="#fff3b8" stroke="#b97f00" stroke-width="1.6"/>
+    <ellipse cx="27.6" cy="31" rx="2.4" ry="3.8" fill="#a56f00"/>
+    <ellipse cx="36.4" cy="31" rx="2.4" ry="3.8" fill="#a56f00"/>
+    <path d="M13 22 A20 20 0 0 1 24 10.5" stroke="#fff" stroke-opacity=".75" stroke-width="3" fill="none" stroke-linecap="round"/>
+  </svg>`;
+}
+
+export function brand(): string {
+  return `<h1 class="logo">${coinLogo()}<span class="wordmark"><span class="oink">Oink</span><span class="coin">Coin</span></span></h1>`;
+}
