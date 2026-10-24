@@ -504,3 +504,16 @@ button.link:hover { background: none; text-decoration: underline; }
 .two-factor .qr { display: block; margin: 1rem auto; width: 200px; height: 200px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 0.5rem; }
 .two-factor .secret { display: inline-block; margin-top: 0.3rem; padding: 0.3rem 0.5rem; background: #faf8f9; border-radius: 8px; font-size: 0.85rem; word-break: break-all; user-select: all; }
 .settings .small-print { font-size: 0.8rem; margin-top: 0.6rem; }
+
+/* Goals */
+.goals .goal-row { margin-bottom: 0.9rem; }
+.goal-head { display: flex; justify-content: space-between; gap: 0.75rem; align-items: baseline; }
+.goal-head span { font-size: 0.85rem; font-weight: 600; white-space: nowrap; }
+.goal-row small { color: var(--muted); display: block; }
+.mood-rules { border-top: 1px solid var(--line); margin-top: 0.5rem; }
+.mood-rules summary { cursor: pointer; padding: 0.8rem 0; font-weight: 600; }
+.mood-rules ul { margin: 0 0 0.75rem; padding-left: 1.1rem; font-size: 0.9rem; }
+.mood-rules .mood-steps { list-style: none; padding: 0; display: grid; gap: 0.35rem; }
+.mood-chip { display: inline-block; min-width: 5.5rem; }
+.goal-main { margin: 0.5rem 0 0; font-size: 0.9rem; }
+.goal-main button.link { font-size: inherit; }

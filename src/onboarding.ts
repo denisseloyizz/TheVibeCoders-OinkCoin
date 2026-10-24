@@ -18,7 +18,7 @@ interface Draft {
   goal: Goal;
 }
 
-const STEPS = ['Buddy', 'Budget', 'Statement', 'Quiz'];
+const STEPS = ['Buddy', 'Budget', 'Statement', 'Goals'];
 const FOCUSABLE: Category[] = CATEGORIES.filter((c) => c !== 'Bills');
 let draft: Draft | null = null;
 
@@ -74,14 +74,17 @@ function stepBody(d: Draft): string {
         ${d.importMsg ? `<p class="import-msg${d.importError ? ' error' : ''}" role="status">${esc(d.importMsg)}</p>` : ''}`;
     default:
       return `
-        <h2>Quick quiz</h2>
+        <h2>Set your goals</h2>
+        <p class="hint">Two quick questions. You can change them later in Profile &amp; Settings.</p>
         <p class="q">1. What do you want to spend less on?</p>
+        <p class="hint">Each one gets a limit 20% smaller than usual. Going over it makes your buddy one step sadder.</p>
         <div class="chips">
           ${FOCUSABLE.map(
             (c) => `<label class="chip"><input type="checkbox" name="focus" value="${esc(c)}" ${d.focus.includes(c) ? 'checked' : ''} />${esc(c)}</label>`,
           ).join('')}
         </div>
         <p class="q">2. What's your main goal?</p>
+        <p class="hint">We'll suggest a matching tip in Grow Your Money.</p>
         <div class="options">
           ${GOALS.map(
             (g) => `<label class="option"><input type="radio" name="goal" value="${esc(g)}" ${g === d.goal ? 'checked' : ''} />${esc(g)}</label>`,

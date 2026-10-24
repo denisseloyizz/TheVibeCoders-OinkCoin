@@ -42,7 +42,7 @@ const SECTIONS: { title: string; intro: string; lessons: Lesson[] }[] = [
   },
 ];
 
-const PICK_FOR_GOAL: Record<Goal, string> = {
+export const PICK_FOR_GOAL: Record<Goal, string> = {
   'Save more money': 'Pay yourself first',
   'Stop impulse buying': 'No-spend challenge',
   'Pay off debt': 'Avalanche method',

@@ -45,10 +45,25 @@ export interface Analysis {
   wantsSpent: number;
   wantsLimit: number;
   needsSpent: number;
+  needsLimit: number;
+  topNeed: CategoryStat | null;
+  /** What set the mood: wants spending, a cut-back category over its limit, or needs over plan. */
+  reason: MoodReason;
   mood: Mood;
   message: string;
   tip: string | null;
 }
+
+export type MoodReason = 'wants' | 'focus' | 'needs';
+
+/** Wants budget used, as a fraction, at which each mood starts. Shown to the user in the goals card. */
+export const MOOD_STEPS: { mood: Mood; from: number }[] = [
+  { mood: 'happy', from: 0 },
+  { mood: 'okay', from: 0.5 },
+  { mood: 'sad', from: 0.8 },
+  { mood: 'angry', from: 1.1 },
+  { mood: 'dead', from: 1.5 },
+];
 
 export function defaultLimits(budget: number, focus: Category[] = []): Record<Category, number> {
   const limits = {} as Record<Category, number>;
@@ -86,11 +101,27 @@ export function analyze(profile: Profile, expenses: Expense[], month = new Date(
   const wantsSpent = wants.reduce((s, c) => s + c.spent, 0);
   const wantsLimit = wants.reduce((s, c) => s + c.limit, 0);
   const wantsRatio = wantsLimit > 0 ? wantsSpent / wantsLimit : wantsSpent > 0 ? Infinity : 0;
+  const needs = categories.filter((c) => !isWant(c.category));
+  const needsSpent = spent - wantsSpent;
+  const needsLimit = needs.reduce((s, c) => s + c.limit, 0);
   const topWant = wants.find((c) => c.spent > 0) ?? null;
+  const topNeed = needs.find((c) => c.spent > 0) ?? null;
   const focusOver = wants.find((c) => profile.focus.includes(c.category) && c.ratio > 1) ?? null;
 
-  let level = wantsRatio < 0.5 ? 0 : wantsRatio < 0.8 ? 1 : wantsRatio <= 1.1 ? 2 : wantsRatio <= 1.5 ? 3 : 4;
-  if (focusOver && level < MOODS.length - 1) level++;
+  // Only wants can make the buddy faint. A cut-back category over its limit makes it one step
+  // worse (at most angry), and needs over plan make it sad at most.
+  let level = MOOD_STEPS.filter((st) => wantsRatio >= st.from).length - 1;
+  let reason: MoodReason = 'wants';
+  const angry = MOODS.indexOf('angry');
+  const sad = MOODS.indexOf('sad');
+  if (focusOver && level < angry) {
+    level++;
+    reason = 'focus';
+  }
+  if (needsLimit > 0 && needsSpent > needsLimit && level < sad) {
+    level = sad;
+    reason = 'needs';
+  }
   const mood = MOODS[level];
 
   const tipCategory = focusOver ?? topWant ?? categories.find((c) => c.spent > 0) ?? null;
@@ -105,9 +136,19 @@ export function analyze(profile: Profile, expenses: Expense[], month = new Date(
     topWant,
     wantsSpent,
     wantsLimit,
-    needsSpent: spent - wantsSpent,
+    needsSpent,
+    needsLimit,
+    topNeed,
+    reason,
     mood,
-    message: spent === 0 ? `${profile.name} is ready. Add an expense or import a statement to get started.` : buildMessage(profile.name, mood, wantsSpent, wantsLimit, topWant, focusOver),
+    message:
+      spent === 0
+        ? `${profile.name} is ready. Add an expense or import a statement to get started.`
+        : reason === 'focus' && focusOver
+          ? `${profile.name} is ${mood === 'angry' ? 'angry' : 'sad'}. ${focusOver.category} is at ${formatMoney(focusOver.spent)}, over the ${formatMoney(focusOver.limit)} limit you set when you chose to cut back on it.`
+          : reason === 'needs'
+          ? `${profile.name} is a little sad. Needs are ${formatMoney(needsSpent - needsLimit)} over plan, mostly ${topNeed?.category ?? 'bills'}. Needs never make ${profile.name} faint, but check that your budget fits your bills.`
+          : buildMessage(profile.name, mood, wantsSpent, wantsLimit, topWant, focusOver),
     tip: tipCategory ? TIPS[tipCategory.category] : null,
   };
 }
@@ -153,6 +194,10 @@ export function pastMessage(profile: Profile, a: Analysis, monthName: string): s
     case 'okay':
       return `${name} did okay in ${monthName}. ${pct}% of the wants budget was used, mostly on ${culprit}.`;
     case 'sad':
+      if (a.reason === 'focus') return `${name} was sad in ${monthName}. A category you chose to cut back on went over its limit.`;
+      if (a.reason === 'needs') {
+        return `${name} was a little sad in ${monthName}. Needs went ${formatMoney(a.needsSpent - a.needsLimit)} over plan, mostly ${a.topNeed?.category ?? 'bills'}.`;
+      }
       return `${name} was sad in ${monthName}. ${culprit} pushed wants to ${pct}% of budget.`;
     case 'angry': {
       if (a.wantsSpent > a.wantsLimit) {
