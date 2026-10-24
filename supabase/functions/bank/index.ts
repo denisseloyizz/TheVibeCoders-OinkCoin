@@ -32,7 +32,7 @@ async function plaid(path: string, body: Record<string, unknown>): Promise<any> 
   const data = await res.json();
   if (!res.ok) {
     console.error(path, data.error_code, data.error_message);
-    const fallback = PLAID_ENV === 'sandbox' ? `Plaid error: ${data.error_code}` : 'Your bank could not be reached. Try again later.';
+    const fallback = PLAID_ENV === 'sandbox' ? `Plaid error: ${data.error_code} - ${data.error_message}` : 'Your bank could not be reached. Try again later.';
     throw new HttpError(502, data.display_message ?? fallback);
   }
   return data;
@@ -80,7 +80,6 @@ async function sync(user: User) {
         access_token: item.access_token,
         cursor,
         count: 500,
-        options: { include_personal_finance_category: true },
       });
       if (page.transactions_update_status === 'NOT_READY') ready = false;
       for (const t of [...page.added, ...page.modified]) {
