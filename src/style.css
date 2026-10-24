@@ -542,3 +542,25 @@ button.link:hover { background: none; text-decoration: underline; }
 .limit-preview { list-style: none; margin: 0; padding: 0; }
 .limit-preview li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
 .limit-preview small { color: var(--muted); }
+
+/* House */
+.house { display: block; width: 100%; height: auto; border-radius: 14px; margin: 0.5rem 0 0.75rem; }
+.house .avatar { animation: none; transform: none; opacity: 1; }
+.house-card .pet-name { margin-top: 0.25rem; }
+.house-card > .link { padding: 0; margin-bottom: 0.5rem; }
+.house-card > button:not(.link) { width: 100%; margin-top: 0.6rem; }
+.house-item .shop-art .house { margin: 0; border-radius: 10px; }
+
+/* Friends */
+.friend-code { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.8rem 1rem; border-radius: 14px; background: var(--gold-soft); margin-bottom: 1rem; }
+.friend-code small { display: block; color: var(--muted); }
+.friend-code strong { font-size: 1.25rem; letter-spacing: 0.04em; }
+.add-friend { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; margin-bottom: 0.75rem; }
+.add-friend input { text-transform: uppercase; }
+.add-friend input::placeholder { text-transform: none; }
+.friend-list { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; gap: 0.5rem; }
+.friend { display: grid; grid-template-columns: 52px 1fr auto; gap: 0.75rem; align-items: center; padding: 0.6rem 0.75rem; border: 1px solid var(--line); border-radius: 14px; }
+.friend-pet .avatar { width: 52px; height: 52px; display: block; animation: none; }
+.friend-body small { display: flex; align-items: center; gap: 0.4rem; color: var(--muted); margin-top: 0.15rem; }
+.friend-actions { display: flex; gap: 0.4rem; }
+.friend.mood-dead { background: #f7f3f4; }

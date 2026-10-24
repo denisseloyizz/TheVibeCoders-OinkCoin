@@ -65,6 +65,8 @@ export interface AppState {
   rewards: string[];
   owned: string[];
   equipped: Equipped;
+  /** Decor placed in the buddy's house, by slot (see house.ts). */
+  house: Partial<Record<string, string>>;
   bank: Bank | null;
   /** When this state was last saved (ms), used to pick the newer copy between device and account. */
   savedAt: number;

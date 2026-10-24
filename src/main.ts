@@ -21,7 +21,9 @@ import { cancelCloudSave, cloudEnabled, flushCloudSave, loadCloudState, queueClo
 import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, isOAuthReturn, resumeBankLink, syncBank } from './bank';
 import { analyze, formatMoney, localDateKey, pastMessage, type Analysis } from './budget';
 import { applyAction, careMood, careNote, currentCare, type CareAction } from './care';
+import { friendsHtml, myHouseHtml, visitHtml } from './friends';
 import { renderGoals } from './goals';
+import { HOUSE_ITEM_BY_ID } from './house';
 import { ICONS, LINE, line } from './icons';
 import { renderLearn } from './learn';
 import { brand } from './logo';
@@ -30,11 +32,25 @@ import { renderArc, renderCategoryDetail, renderCategoryList } from './ring';
 import { COINS_PER_GOAL, findNewAwards } from './rewards';
 import { mergeExpenses, readStatementFile } from './statement';
 import { clearState, emptyState, loadState, saveLocalOnly, saveState, setSaveListener } from './storage';
+import {
+  acceptFriend,
+  collectCheers,
+  loadFriends,
+  publishBuddy,
+  removeFriend,
+  resetSocial,
+  sendCheer,
+  sendFriendRequest,
+  setDisplayName,
+  socialEnabled,
+  type BuddyCard,
+  type FriendsData,
+} from './social';
 import { renderStore } from './store';
 import { CATEGORIES, type Care, type Category, type Expense, type Mood, type Profile } from './types';
 import { esc } from './util';
 
-type View = 'buddy' | 'history' | 'report' | 'store' | 'settings' | 'learn';
+type View = 'buddy' | 'history' | 'friends' | 'report' | 'store' | 'settings' | 'learn';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const state = emptyState();
@@ -47,6 +63,12 @@ let editing = false;
 let managingConsent = false;
 let settingUpTwoFactor = false;
 let cloudLoading = false;
+let friendsData: FriendsData | null = null;
+let friendsLoading = false;
+let friendsFailed = false;
+let friendsMsg = '';
+let visiting: string | null = null;
+let cheersChecked = false;
 let accountMsg = '';
 let view: View = 'buddy';
 let viewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -59,6 +81,11 @@ const MOOD_LABEL: Record<Mood, string> = { happy: 'Happy', okay: 'Okay', sad: 'S
 const MENU: { view: View; label: string; icon: string }[] = [
   { view: 'buddy', label: 'Budget Buddy', icon: LINE.pet },
   { view: 'history', label: 'Pet History', icon: line('<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>') },
+  {
+    view: 'friends',
+    label: 'Friends & House',
+    icon: line('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 3-5.5 6.5-5.5s6.5 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.6c2.2.6 3.5 2.4 3.5 5.4"/>'),
+  },
   { view: 'report', label: 'Full Report', icon: line('<path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/>') },
   { view: 'store', label: 'Store', icon: line('<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>') },
   { view: 'learn', label: 'Grow Your Money', icon: line('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>') },
@@ -187,7 +214,50 @@ async function logOut(): Promise<void> {
   await flushCloudSave();
   accountMsg = '';
   stateOwner = ''; // re-check the account on the next login, in case another device changed things
+  friendsData = null;
+  visiting = null;
+  cheersChecked = false;
+  resetSocial();
   await signOut();
+}
+
+const buddyCard = (profile: Profile, mood: Mood): BuddyCard => ({
+  name: profile.name,
+  character: profile.character,
+  mood,
+  equipped: state.equipped,
+  house: state.house,
+});
+
+async function refreshFriends(profile: Profile, mood: Mood): Promise<void> {
+  friendsLoading = true;
+  try {
+    friendsData = await loadFriends(buddyCard(profile, mood));
+  } catch (err) {
+    // Stay on the error until the user retries, instead of reloading in a loop.
+    friendsData = null;
+    friendsFailed = true;
+    friendsMsg = errorText(err);
+  }
+  friendsLoading = false;
+  if (view === 'friends') render();
+}
+
+/** Cheers friends sent since last time: a pop-up and +10 Love each. */
+async function checkCheers(): Promise<void> {
+  try {
+    const from = await collectCheers();
+    if (!from.length) return;
+    let care = currentCare(state.care);
+    for (const name of from) {
+      care = { ...care, love: Math.min(100, care.love + 10) };
+      showToast(`${ICONS.heart}<span><b>${esc(name)}</b> cheered for ${esc(state.profile?.name ?? 'your buddy')}! +10 Love</span>`);
+    }
+    state.care = care;
+    persist();
+  } catch (err) {
+    console.warn('Could not check cheers:', err);
+  }
 }
 
 function render(): void {
@@ -216,6 +286,11 @@ function render(): void {
   if (stateOwner !== user.email) {
     Object.assign(state, loadState(user.email));
     stateOwner = user.email;
+    friendsData = null;
+    friendsFailed = false;
+    visiting = null;
+    cheersChecked = false;
+    resetSocial();
     autoSynced = false;
     bankMsg = '';
     view = 'buddy';
@@ -273,6 +348,10 @@ function render(): void {
     autoSynced = true;
     const due = !state.bank || (user.consent.scopes.includes('sync') && Date.now() - state.bank.syncedAt > DAY);
     if (bankEnabled && due) void syncNow(true);
+  }
+  if (socialEnabled && !cheersChecked) {
+    cheersChecked = true;
+    void checkCheers();
   }
   collectRewards();
   renderDashboard(state.profile);
@@ -573,11 +652,22 @@ function renderDashboard(profile: Profile): void {
   const body = {
     buddy: () => homeHtml(profile, now, care, mood),
     history: () => historyHtml(profile, now, mood),
+    friends: () => {
+      if (!socialEnabled) {
+        return `${myHouseHtml(state, profile, mood)}<section class="card"><h2>Friends</h2><p class="hint">Friends need an online account. This copy of OinkCoin isn't connected to one.</p></section>`;
+      }
+      const friend = visiting ? friendsData?.friends.find((f) => f.id === visiting) : undefined;
+      if (friend) return visitHtml(friend, friendsMsg);
+      if (!friendsData && !friendsLoading && !friendsFailed) void refreshFriends(profile, mood);
+      return myHouseHtml(state, profile, mood) + friendsHtml(friendsData, !friendsFailed, friendsMsg);
+    },
     report: () => reportHtml(profile, month),
     store: () => renderStore(state, profile),
     learn: () => renderLearn(profile, now),
     settings: () => settingsHtml(profile),
   }[view]();
+
+  if (socialEnabled) publishBuddy(buddyCard(profile, mood));
 
   setDrawer(false);
   app.innerHTML = `
@@ -596,10 +686,110 @@ function renderDashboard(profile: Profile): void {
     b.addEventListener('click', () => {
       view = b.dataset.view as View;
       selectedCat = null;
+      if (view === 'friends') {
+        // Fresh list each time you open Friends.
+        friendsData = null;
+        friendsFailed = false;
+        friendsMsg = '';
+        visiting = null;
+      }
       render();
       window.scrollTo(0, 0);
     }),
   );
+
+  // Friends
+  const reloadFriends = () => {
+    friendsData = null;
+    friendsFailed = false;
+    render();
+  };
+  app.querySelector('#retry-friends')?.addEventListener('click', () => {
+    friendsMsg = '';
+    reloadFriends();
+  });
+  app.querySelector<HTMLButtonElement>('#copy-code')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    try {
+      await navigator.clipboard.writeText(btn.dataset.code!);
+      btn.textContent = 'Copied!';
+    } catch {
+      btn.textContent = 'Select and copy it';
+    }
+  });
+  const addForm = app.querySelector<HTMLFormElement>('#add-friend');
+  addForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = String(new FormData(addForm).get('code')).trim();
+    if (!code) return;
+    addForm.querySelector('button')!.disabled = true;
+    try {
+      friendsMsg = await sendFriendRequest(code);
+    } catch (err) {
+      friendsMsg = errorText(err);
+    }
+    reloadFriends();
+  });
+  app.querySelector<HTMLInputElement>('#display-name')?.addEventListener('change', async (e) => {
+    try {
+      await setDisplayName((e.target as HTMLInputElement).value);
+      friendsMsg = 'Saved. Friends will see this name.';
+    } catch (err) {
+      friendsMsg = errorText(err);
+    }
+    reloadFriends();
+  });
+  const friendAction = (attr: string, act: (id: string) => Promise<unknown>, done: string) =>
+    app.querySelectorAll<HTMLButtonElement>(`[data-${attr}]`).forEach((b) =>
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        try {
+          await act(b.getAttribute(`data-${attr}`)!);
+          friendsMsg = done;
+        } catch (err) {
+          friendsMsg = errorText(err);
+        }
+        reloadFriends();
+      }),
+    );
+  friendAction('accept', acceptFriend, 'You are now friends!');
+  friendAction('decline', removeFriend, 'Request declined.');
+  app.querySelectorAll<HTMLButtonElement>('[data-visit]').forEach((b) =>
+    b.addEventListener('click', () => {
+      visiting = b.dataset.visit!;
+      friendsMsg = '';
+      render();
+      window.scrollTo(0, 0);
+    }),
+  );
+  app.querySelector('#back-friends')?.addEventListener('click', () => {
+    visiting = null;
+    friendsMsg = '';
+    render();
+  });
+  app.querySelector<HTMLButtonElement>('#cheer')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    btn.disabled = true;
+    try {
+      friendsMsg = (await sendCheer(btn.dataset.cheer!))
+        ? 'Cheer sent! They get +10 Love next time they open OinkCoin.'
+        : 'You already cheered for them today. Come back tomorrow!';
+    } catch (err) {
+      friendsMsg = errorText(err);
+    }
+    render();
+  });
+  app.querySelector<HTMLButtonElement>('#unfriend')?.addEventListener('click', async (e) => {
+    if (!confirm('Remove this friend? You can add each other again with your codes.')) return;
+    try {
+      await removeFriend((e.currentTarget as HTMLButtonElement).dataset.unfriend!);
+      visiting = null;
+      friendsMsg = 'Friend removed.';
+    } catch (err) {
+      friendsMsg = errorText(err);
+    }
+    reloadFriends();
+  });
 
   app.querySelector('#edit')?.addEventListener('click', () => {
     editing = true;
@@ -689,6 +879,26 @@ function renderDashboard(profile: Profile): void {
       state.owned.push(item.id);
       state.equipped[item.slot] = item.id;
       showToast(`${ICONS.bag}<span>${esc(item.name)} is yours!</span>`);
+      persist();
+    }),
+  );
+  app.querySelectorAll<HTMLButtonElement>('[data-buy-house]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const item = HOUSE_ITEM_BY_ID.get(b.dataset.buyHouse!);
+      if (!item || state.owned.includes(item.id) || state.coins < item.price) return;
+      state.coins -= item.price;
+      state.owned.push(item.id);
+      state.house[item.slot] = item.id;
+      showToast(`${ICONS.bag}<span>${esc(item.name)} is in your house!</span>`);
+      persist();
+    }),
+  );
+  app.querySelectorAll<HTMLButtonElement>('[data-place]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const item = HOUSE_ITEM_BY_ID.get(b.dataset.place!);
+      if (!item || !state.owned.includes(item.id)) return;
+      if (state.house[item.slot] === item.id) delete state.house[item.slot];
+      else state.house[item.slot] = item.id;
       persist();
     }),
   );
