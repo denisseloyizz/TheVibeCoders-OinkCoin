@@ -1,6 +1,19 @@
 import './style.css';
 import { ITEM_BY_ID } from './accessories';
-import { currentUser, deleteLocalAccount, initAuth, renderAuth, renderConsent, SCOPES, signOut } from './auth';
+import {
+  currentUser,
+  deleteLocalAccount,
+  disableTwoFactor,
+  initAuth,
+  needsTwoFactor,
+  renderAuth,
+  renderConsent,
+  renderTwoFactorChallenge,
+  renderTwoFactorSetup,
+  SCOPES,
+  signOut,
+  twoFactorOn,
+} from './auth';
 import { renderAvatar } from './avatar';
 import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, isOAuthReturn, resumeBankLink, syncBank } from './bank';
 import { analyze, formatMoney, localDateKey, pastMessage, type Analysis } from './budget';
@@ -28,6 +41,8 @@ let bankMsg = '';
 const alerted = new Set<string>();
 let editing = false;
 let managingConsent = false;
+let settingUpTwoFactor = false;
+let accountMsg = '';
 let view: View = 'buddy';
 let viewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedCat: Category | null = null;
@@ -149,6 +164,19 @@ function render(): void {
   const user = currentUser();
   if (!user) {
     renderAuth(app, render);
+    return;
+  }
+  if (needsTwoFactor()) {
+    renderTwoFactorChallenge(app, render);
+    return;
+  }
+  if (settingUpTwoFactor) {
+    const finish = (msg: string) => {
+      settingUpTwoFactor = false;
+      accountMsg = msg;
+      render();
+    };
+    void renderTwoFactorSetup(app, () => finish('Two-factor sign-in is on.'), () => finish(''));
     return;
   }
   if (stateOwner !== user.email) {
@@ -389,6 +417,7 @@ function reportHtml(profile: Profile, view: Analysis): string {
 function settingsHtml(profile: Profile): string {
   const user = currentUser();
   const granted = SCOPES.filter((s) => user?.consent?.scopes.includes(s.id));
+  const twoFactor = twoFactorOn();
   return `
     <section class="card settings">
       <div class="profile-row">
@@ -410,9 +439,15 @@ function settingsHtml(profile: Profile): string {
       <dl class="facts">
         <div><dt>Email</dt><dd>${esc(user?.email ?? '')}</dd></div>
         <div><dt>Bank permissions</dt><dd>${esc(granted.map((s) => s.label).join(', '))}</dd></div>
+        ${twoFactor === null ? '' : `<div><dt>Two-factor sign-in</dt><dd>${twoFactor ? 'On' : 'Off'}</dd></div>`}
       </dl>
+      ${twoFactor === false ? '<p class="hint">Turn on two-factor sign-in so a stolen password alone can&#39;t open your bank data.</p>' : ''}
+      ${accountMsg ? `<p class="import-msg" role="status">${esc(accountMsg)}</p>` : ''}
+      ${twoFactor === null ? '' : `<button id="two-factor" class="${twoFactor ? 'secondary' : ''}">${twoFactor ? 'Turn off two-factor' : 'Turn on two-factor'}</button>`}
       <button id="permissions" class="secondary">Manage bank permissions</button>
       <button id="logout" class="secondary">Log out</button>
+      <button id="logout-clear" class="secondary">Log out &amp; clear this device</button>
+      <p class="hint small-print">Your buddy, coins and transactions are saved on this device. Clearing removes them here; bank transactions can be synced again, but everything else is gone for good.</p>
     </section>
 
     ${bankHtml()}
@@ -525,7 +560,37 @@ function renderDashboard(profile: Profile): void {
     render();
   });
   app.querySelector('#logout')?.addEventListener('click', async () => {
+    accountMsg = '';
     await signOut();
+    render();
+  });
+  app.querySelector('#logout-clear')?.addEventListener('click', async () => {
+    if (!confirm('Log out and remove your buddy, coins and transactions from this device? This cannot be undone.')) return;
+    clearState();
+    Object.assign(state, emptyState());
+    stateOwner = '';
+    accountMsg = '';
+    try {
+      sessionStorage.clear();
+    } catch {
+      // Nothing to clear.
+    }
+    await signOut();
+    render();
+  });
+  app.querySelector('#two-factor')?.addEventListener('click', async () => {
+    accountMsg = '';
+    if (!twoFactorOn()) {
+      settingUpTwoFactor = true;
+      return render();
+    }
+    if (!confirm('Turn off two-factor sign-in? Your account will be protected by your password only.')) return;
+    try {
+      await disableTwoFactor();
+      accountMsg = 'Two-factor sign-in is off.';
+    } catch (err) {
+      accountMsg = errorText(err);
+    }
     render();
   });
   app.querySelector('#link-bank')?.addEventListener('click', () => void linkBank());
