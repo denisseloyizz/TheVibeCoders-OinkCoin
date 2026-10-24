@@ -34,7 +34,8 @@ function goalRow(g: Goal): string {
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
 /** This month's targets, what each one does, and how the buddy's mood is decided. */
-export function renderGoals(state: AppState, profile: Profile, a: Analysis): string {
+/** Folded to one line ("This month's goals · 2 of 7 on track") until opened. */
+export function renderGoals(state: AppState, profile: Profile, a: Analysis, open = false): string {
   const name = esc(profile.name);
   const week = currentWeekWants(state);
   const goals: Goal[] = [
@@ -60,11 +61,11 @@ export function renderGoals(state: AppState, profile: Profile, a: Analysis): str
   }).join('');
 
   return `
-    <section class="card goals">
-      <div class="goals-head">
+    <details class="card goals" id="goals-card" ${open ? 'open' : ''}>
+      <summary class="goals-head">
         <h2>This month's goals</h2>
         <span class="goals-count ${onTrack === goals.length ? 'pos' : onTrack === 0 ? 'neg' : ''}">${onTrack} of ${goals.length} on track</span>
-      </div>
+      </summary>
       ${goals.map(goalRow).join('')}
 
       <details class="mood-rules">
@@ -80,5 +81,5 @@ export function renderGoals(state: AppState, profile: Profile, a: Analysis): str
       </details>
 
       <p class="goal-main">Your main goal: <b>${esc(profile.goal)}</b>. Try <button class="link" data-view="learn">${esc(PICK_FOR_GOAL[profile.goal])}</button> in Grow Your Money.</p>
-    </section>`;
+    </details>`;
 }

@@ -62,6 +62,7 @@ let editing = false;
 let managingConsent = false;
 let settingUpTwoFactor = false;
 let cloudLoading = false;
+let goalsOpen = false;
 let friendsData: FriendsData | null = null;
 let friendsLoading = false;
 let friendsFailed = false;
@@ -441,7 +442,7 @@ function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): str
       ${view.tip ? `<p class="tip">${LINE.bulb}<span>${esc(view.tip)}</span></p>` : ''}
     </section>
 
-    ${renderGoals(state, profile, view)}
+    ${renderGoals(state, profile, view, goalsOpen)}
 
     <section class="card">${renderCategoryDetail(selected, view.spent)}</section>
 
@@ -748,6 +749,10 @@ function renderDashboard(profile: Profile): void {
     state.notices = state.notices.map((n) => ({ ...n, read: true }));
     saveState(state);
   }
+  // Keep the goals card open or closed across re-renders.
+  app.querySelector<HTMLDetailsElement>('#goals-card')?.addEventListener('toggle', (e) => {
+    goalsOpen = (e.target as HTMLDetailsElement).open;
+  });
   app.querySelector('#clear-notices')?.addEventListener('click', () => {
     state.notices = [];
     persist();
