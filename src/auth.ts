@@ -103,7 +103,12 @@ async function hashPassword(password: string, salt: Uint8Array<ArrayBuffer>): Pr
 /** Returns false when the account was created but the email still needs confirming. */
 async function signUp(email: string, password: string): Promise<boolean> {
   if (supabase) {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      // Bring the confirmation link back to wherever the app is running (dev server or Pages).
+      options: { emailRedirectTo: location.origin + location.pathname },
+    });
     if (error) throw new Error(error.message);
     user = fromSupabase(data.session?.user);
     return !!data.session;
