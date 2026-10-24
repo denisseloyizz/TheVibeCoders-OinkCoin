@@ -19,7 +19,7 @@ import {
 import { renderAvatar } from './avatar';
 import { cancelCloudSave, cloudEnabled, flushCloudSave, loadCloudState, queueCloudSave } from './cloud';
 import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, isOAuthReturn, resumeBankLink, syncBank } from './bank';
-import { analyze, formatMoney, localDateKey, pastMessage, type Analysis } from './budget';
+import { analyze, formatMoney, localDateKey, pastMessage, petName, type Analysis } from './budget';
 import { applyAction, careMood, careNote, currentCare, type CareAction } from './care';
 import { friendsHtml, myHouseHtml, visitHtml } from './friends';
 import { renderGoals } from './goals';
@@ -405,14 +405,14 @@ function freshStartMessage(profile: Profile): string {
   const last = analyze(profile, state.expenses, monthStart(-1));
   const month = monthLabel(monthStart(), false);
   if (last.spent > 0 && (last.mood === 'dead' || last.mood === 'angry')) {
-    return `${profile.name} is back! ${month} is a fresh start after a rough ${monthLabel(monthStart(-1), false)}. Let's keep wants low this time.`;
+    return `${petName(profile)} is back! A fresh start for ${month}.`;
   }
-  return `A fresh ${month} for ${profile.name}! Add an expense or sync your bank to get started.`;
+  return `A fresh ${month} for ${petName(profile)}!`;
 }
 
 function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): string {
   const base = view.spent === 0 ? freshStartMessage(profile) : view.message;
-  const message = mood === 'dead' ? base : (careNote(profile.name, care) ?? base);
+  const message = mood === 'dead' ? base : (careNote(petName(profile), care) ?? base);
   const selected = view.categories.find((c) => c.category === selectedCat) ?? view.topWant ?? view.categories[0];
   const monthName = monthLabel(monthStart(), false);
   const asOf = new Date();

@@ -141,73 +141,57 @@ export function analyze(profile: Profile, expenses: Expense[], month = new Date(
     topNeed,
     reason,
     mood,
-    message:
-      spent === 0
-        ? `${profile.name} is ready. Add an expense or import a statement to get started.`
-        : reason === 'focus' && focusOver
-          ? `${profile.name} is ${mood === 'angry' ? 'angry' : 'sad'}. ${focusOver.category} is at ${formatMoney(focusOver.spent)}, over the ${formatMoney(focusOver.limit)} limit you set when you chose to cut back on it.`
-          : reason === 'needs'
-          ? `${profile.name} is a little sad. Needs are ${formatMoney(needsSpent - needsLimit)} over plan, mostly ${topNeed?.category ?? 'bills'}. Needs never make ${profile.name} faint, but check that your budget fits your bills.`
-          : buildMessage(profile.name, mood, wantsSpent, wantsLimit, topWant, focusOver),
+    message: spent === 0 ? `${petName(profile)} is ready! Add your first expense.` : buildMessage(petName(profile), mood, reason, topWant, focusOver, topNeed),
     tip: tipCategory ? TIPS[tipCategory.category] : null,
   };
 }
 
+/** The buddy's name as it reads at the start of a sentence. */
+export const petName = (profile: Profile): string => profile.name.charAt(0).toUpperCase() + profile.name.slice(1);
+
+/** One short, plain sentence about this month. The numbers live in the goals card. */
 function buildMessage(
   name: string,
   mood: Mood,
-  wantsSpent: number,
-  wantsLimit: number,
+  reason: MoodReason,
   topWant: CategoryStat | null,
   focusOver: CategoryStat | null,
+  topNeed: CategoryStat | null,
 ): string {
-  const pct = wantsLimit > 0 ? Math.round((wantsSpent / wantsLimit) * 100) : 0;
-  const culprit = topWant ? `${topWant.category} (${formatMoney(topWant.spent)})` : 'extras';
+  const culprit = topWant?.category ?? 'extras';
+  if (reason === 'needs') return `${name} is a little sad. ${topNeed?.category ?? 'Bills'} cost more than planned.`;
+  if (reason === 'focus' && focusOver) return `${name} is ${mood === 'angry' ? 'angry' : 'sad'}. ${focusOver.category} is over your cut-back limit.`;
   switch (mood) {
     case 'happy':
-      return wantsSpent === 0
-        ? `${name} is happy. Everything this month has gone to needs.`
-        : `${name} is happy. You've used ${pct}% of your wants budget.`;
+      return `${name} is happy! You're doing great.`;
     case 'okay':
-      return `${name} is doing okay. ${pct}% of your wants budget is used, mostly on ${culprit}.`;
+      return `${name} is okay. Go easy on ${culprit}.`;
     case 'sad':
-      return `${name} is sad. ${culprit} is pushing your wants to ${pct}% of budget.`;
+      return `${name} is sad. Slow down on ${culprit}.`;
     case 'angry':
-      return wantsSpent > wantsLimit
-        ? `${name} is angry. Wants are ${formatMoney(wantsSpent - wantsLimit)} over budget, led by ${culprit}.`
-        : `${name} is angry. ${focusOver?.category ?? 'A goal category'} is over the limit you set.`;
+      return `${name} is angry. You're over budget on ${culprit}.`;
     case 'dead':
-      return `${name} fainted. Wants are at ${pct}% of budget. Pause ${topWant?.category ?? 'extras'} to bring ${name} back.`;
+      return `${name} fainted from too much ${culprit}. Spend less to wake ${name} up.`;
   }
 }
 
 /** How a finished month went, in the past tense, for the pet history. */
 export function pastMessage(profile: Profile, a: Analysis, monthName: string): string {
-  const name = profile.name;
-  const pct = a.wantsLimit > 0 ? Math.round((a.wantsSpent / a.wantsLimit) * 100) : 0;
+  const name = petName(profile);
   const culprit = a.topWant?.category ?? 'extras';
+  if (a.reason === 'needs') return `${name} was a little sad in ${monthName}. ${a.topNeed?.category ?? 'Bills'} cost more than planned.`;
+  if (a.reason === 'focus') return `${name} was sad in ${monthName}. A cut-back category went over.`;
   switch (a.mood) {
     case 'happy':
-      return a.wantsSpent === 0
-        ? `${name} had a happy ${monthName}. Everything went to needs.`
-        : `${name} had a happy ${monthName}. Wants stayed at ${pct}% of budget.`;
+      return `${name} had a happy ${monthName}!`;
     case 'okay':
-      return `${name} did okay in ${monthName}. ${pct}% of the wants budget was used, mostly on ${culprit}.`;
+      return `${name} did okay in ${monthName}.`;
     case 'sad':
-      if (a.reason === 'focus') return `${name} was sad in ${monthName}. A category you chose to cut back on went over its limit.`;
-      if (a.reason === 'needs') {
-        return `${name} was a little sad in ${monthName}. Needs went ${formatMoney(a.needsSpent - a.needsLimit)} over plan, mostly ${a.topNeed?.category ?? 'bills'}.`;
-      }
-      return `${name} was sad in ${monthName}. ${culprit} pushed wants to ${pct}% of budget.`;
-    case 'angry': {
-      if (a.wantsSpent > a.wantsLimit) {
-        return `${name} was angry in ${monthName}. Wants went ${formatMoney(a.wantsSpent - a.wantsLimit)} over budget, led by ${culprit}.`;
-      }
-      const goal = a.categories.find((c) => profile.focus.includes(c.category) && isWant(c.category) && c.ratio > 1);
-      return `${name} was angry in ${monthName}. ${goal?.category ?? 'A goal category'} went over the limit you set.`;
-    }
+      return `${name} was sad in ${monthName}. Too much ${culprit}.`;
+    case 'angry':
+      return `${name} was angry in ${monthName}. Over budget on ${culprit}.`;
     case 'dead':
-      return `${name} fainted in ${monthName}. Wants hit ${pct}% of budget, mostly on ${culprit}.`;
+      return `${name} fainted in ${monthName} from too much ${culprit}.`;
   }
 }
 
