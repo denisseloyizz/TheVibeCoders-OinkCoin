@@ -6,18 +6,29 @@ import { esc } from './util';
 
 const MOOD_NAME: Record<Mood, string> = { happy: 'Happy', okay: 'Okay', sad: 'Sad', angry: 'Angry', dead: 'Fainted' };
 
-function goalRow(title: string, spent: number, limit: number, note: string): string {
-  const ratio = limit > 0 ? spent / limit : spent > 0 ? Infinity : 0;
+interface Goal {
+  title: string;
+  spent: number;
+  limit: number;
+  note: string;
+}
+
+/** A compact row: name, amounts and bar; tap the arrow for what it means. */
+function goalRow(g: Goal): string {
+  const ratio = g.limit > 0 ? g.spent / g.limit : g.spent > 0 ? Infinity : 0;
   const state = ratio > 1 ? 'over' : ratio >= 0.8 ? 'warn' : 'ok';
+  const money = (n: number) => formatMoney(Math.round(n)).replace(/\.00$/, '');
   return `
-    <div class="goal-row ${state}">
-      <div class="goal-head">
-        <strong>${esc(title)}</strong>
-        <span class="${ratio > 1 ? 'neg' : ''}">${formatMoney(spent)} / ${formatMoney(limit)}</span>
-      </div>
-      <div class="bar"><div class="fill ${state}" style="width:${Math.min(100, Math.round(ratio * 100))}%"></div></div>
-      <small>${note}</small>
-    </div>`;
+    <details class="goal-row ${state}">
+      <summary>
+        <div class="goal-head">
+          <strong>${esc(g.title)}</strong>
+          <span class="${ratio > 1 ? 'neg' : ''}">${money(g.spent)} / ${money(g.limit)}</span>
+        </div>
+        <div class="bar"><div class="fill ${state}" style="width:${Math.min(100, Math.round(ratio * 100))}%"></div></div>
+      </summary>
+      <small>${g.note}</small>
+    </details>`;
 }
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
@@ -26,9 +37,21 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 export function renderGoals(state: AppState, profile: Profile, a: Analysis): string {
   const name = esc(profile.name);
   const week = currentWeekWants(state);
-  const focusRows = a.categories
-    .filter((c) => profile.focus.includes(c.category))
-    .map((c) => goalRow(`Cut back on ${c.category}`, c.spent, c.limit, `20% less than usual, because you picked it in your goals. Going over makes ${name} one step sadder.`));
+  const goals: Goal[] = [
+    { title: 'Wants', spent: a.wantsSpent, limit: a.wantsLimit, note: `${esc(WANTS.join(', '))}. This sets ${name}'s mood.` },
+    ...a.categories
+      .filter((c) => profile.focus.includes(c.category))
+      .map((c) => ({
+        title: `Cut back: ${c.category}`,
+        spent: c.spent,
+        limit: c.limit,
+        note: `20% less than usual, because you picked it in your goals. Going over makes ${name} one step sadder.`,
+      })),
+    { title: 'Needs', spent: a.needsSpent, limit: a.needsLimit, note: `${esc([...NEEDS, 'Other'].join(', '))}. Going over makes ${name} sad, never worse.` },
+    { title: 'This week', spent: week.spent, limit: week.limit, note: `Wants this week. Stay under to earn <b>+${COINS_PER_GOAL} coins</b> when the week ends.` },
+    { title: 'Whole month', spent: a.spent, limit: profile.budget, note: `Finish under your budget with wants on budget to earn <b>+${COINS_PER_GOAL} coins</b>.` },
+  ];
+  const onTrack = goals.filter((g) => g.spent <= g.limit).length;
 
   const steps = MOOD_STEPS.map((st, i) => {
     const next = MOOD_STEPS[i + 1];
@@ -38,12 +61,11 @@ export function renderGoals(state: AppState, profile: Profile, a: Analysis): str
 
   return `
     <section class="card goals">
-      <h2>This month's goals</h2>
-      ${goalRow('Keep wants on budget', a.wantsSpent, a.wantsLimit, `${esc(WANTS.join(', '))}. This sets ${name}'s mood.`)}
-      ${focusRows.join('')}
-      ${goalRow('Keep needs on plan', a.needsSpent, a.needsLimit, `${esc([...NEEDS, 'Other'].join(', '))}. Going over makes ${name} sad, never worse.`)}
-      ${goalRow("This week's wants", week.spent, week.limit, `Stay under to earn <b>+${COINS_PER_GOAL} coins</b> when the week ends.`)}
-      ${goalRow('Whole month', a.spent, profile.budget, `Finish under your budget with wants on budget to earn <b>+${COINS_PER_GOAL} coins</b>.`)}
+      <div class="goals-head">
+        <h2>This month's goals</h2>
+        <span class="goals-count ${onTrack === goals.length ? 'pos' : onTrack === 0 ? 'neg' : ''}">${onTrack} of ${goals.length} on track</span>
+      </div>
+      ${goals.map(goalRow).join('')}
 
       <details class="mood-rules">
         <summary>How ${name}'s mood works</summary>
