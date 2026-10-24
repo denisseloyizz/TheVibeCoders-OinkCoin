@@ -1,6 +1,8 @@
 import './style.css';
 import { ITEM_BY_ID } from './accessories';
+import { currentUser, deleteLocalAccount, initAuth, renderAuth, renderConsent, SCOPES, signOut } from './auth';
 import { renderAvatar } from './avatar';
+import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, syncBank } from './bank';
 import { analyze, formatMoney, localDateKey, type Analysis } from './budget';
 import { applyAction, careMood, careNote, currentCare, type CareAction } from './care';
 import { ICONS, LINE, line } from './icons';
@@ -10,7 +12,7 @@ import { renderOnboarding } from './onboarding';
 import { renderArc, renderCategoryDetail, renderCategoryList } from './ring';
 import { COINS_PER_GOAL, findNewAwards } from './rewards';
 import { mergeExpenses, readStatementFile } from './statement';
-import { emptyState, loadState, saveState } from './storage';
+import { clearState, emptyState, loadState, saveState } from './storage';
 import { renderStore } from './store';
 import { CATEGORIES, type Care, type Category, type Expense, type Mood, type Profile } from './types';
 import { esc } from './util';
@@ -18,8 +20,14 @@ import { esc } from './util';
 type View = 'buddy' | 'report' | 'store' | 'settings' | 'learn';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
-const state = loadState();
+const state = emptyState();
+let stateOwner = '';
+let autoSynced = false;
+let bankBusy = false;
+let bankMsg = '';
+const alerted = new Set<string>();
 let editing = false;
+let managingConsent = false;
 let view: View = 'buddy';
 let viewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedCat: Category | null = null;
@@ -81,7 +89,95 @@ function persist(): void {
   render();
 }
 
+const DAY = 24 * 60 * 60 * 1000;
+const errorText = (err: unknown) => (err instanceof Error ? err.message : 'Something went wrong. Try again.');
+
+function checkAlerts(): void {
+  if (!state.profile || !currentUser()?.consent?.scopes.includes('alerts')) return;
+  const now = analyze(state.profile, state.expenses);
+  for (const c of now.categories) {
+    const key = `${now.monthKey}:${c.category}`;
+    if (c.limit <= 0 || c.ratio < 0.9 || alerted.has(key)) continue;
+    alerted.add(key);
+    const pct = Math.round(c.ratio * 100);
+    showToast(`${LINE.bulb}<span>Heads up: you've used <b>${pct}%</b> of your ${esc(c.category)} budget.</span>`);
+  }
+}
+
+async function syncNow(quiet: boolean): Promise<void> {
+  bankBusy = true;
+  if (!quiet) render();
+  let added = 0;
+  try {
+    const r = await syncBank();
+    const before = state.expenses.length;
+    state.expenses = mergeExpenses(state.expenses, r.expenses);
+    state.bank = r.linked ? { accounts: r.accounts, syncedAt: Date.now() } : null;
+    saveState(state);
+    added = state.expenses.length - before;
+    bankMsg = !r.linked
+      ? ''
+      : r.ready
+        ? `Synced ${added} new transaction${added === 1 ? '' : 's'}.`
+        : 'Your bank is still preparing your transactions. Try syncing again in a minute.';
+    if (bankMsg && (!quiet || added)) showToast(`${ICONS.coin}<span>${esc(bankMsg)}</span>`);
+    checkAlerts();
+  } catch (err) {
+    if (!quiet) bankMsg = errorText(err);
+  } finally {
+    bankBusy = false;
+    if (!quiet || added) render();
+  }
+}
+
+async function linkBank(): Promise<void> {
+  bankBusy = true;
+  bankMsg = '';
+  render();
+  try {
+    if (await connectBank()) return await syncNow(false);
+  } catch (err) {
+    bankMsg = errorText(err);
+    showToast(`${LINE.close}<span>${esc(bankMsg)}</span>`);
+  }
+  bankBusy = false;
+  render();
+}
+
 function render(): void {
+  const user = currentUser();
+  if (!user) {
+    renderAuth(app, render);
+    return;
+  }
+  if (stateOwner !== user.email) {
+    Object.assign(state, loadState(user.email));
+    stateOwner = user.email;
+    autoSynced = false;
+    bankMsg = '';
+    view = 'buddy';
+    alerted.clear();
+  }
+  if (!user.consent || managingConsent) {
+    const firstTime = !user.consent;
+    renderConsent(
+      app,
+      user,
+      () => {
+        managingConsent = false;
+        autoSynced = true;
+        if (firstTime && bankEnabled && !state.bank) void linkBank();
+        else render();
+      },
+      user.consent
+        ? () => {
+            managingConsent = false;
+            render();
+          }
+        : null,
+    );
+    return;
+  }
   if (!state.profile || editing) {
     renderOnboarding(
       app,
@@ -99,6 +195,11 @@ function render(): void {
         : null,
     );
     return;
+  }
+  if (!autoSynced) {
+    autoSynced = true;
+    const due = !state.bank || (user.consent.scopes.includes('sync') && Date.now() - state.bank.syncedAt > DAY);
+    if (bankEnabled && due) void syncNow(true);
   }
   collectRewards();
   renderDashboard(state.profile);
@@ -223,6 +324,8 @@ function reportHtml(profile: Profile, view: Analysis): string {
 }
 
 function settingsHtml(profile: Profile): string {
+  const user = currentUser();
+  const granted = SCOPES.filter((s) => user?.consent?.scopes.includes(s.id));
   return `
     <section class="card settings">
       <div class="profile-row">
@@ -239,10 +342,51 @@ function settingsHtml(profile: Profile): string {
       <button id="edit">Edit buddy, budget &amp; quiz</button>
     </section>
 
+    <section class="card settings">
+      <h2>Account</h2>
+      <dl class="facts">
+        <div><dt>Email</dt><dd>${esc(user?.email ?? '')}</dd></div>
+        <div><dt>Bank permissions</dt><dd>${esc(granted.map((s) => s.label).join(', '))}</dd></div>
+      </dl>
+      <button id="permissions" class="secondary">Manage bank permissions</button>
+      <button id="logout" class="secondary">Log out</button>
+    </section>
+
+    ${bankHtml()}
+
     <section class="card">
       <h2>Reset</h2>
-      <p class="hint">Delete your buddy, budget and all transactions from this device.</p>
+      <p class="hint">Delete your account, buddy, budget and all transactions${bankEnabled ? ', and disconnect your bank' : ' from this device'}.</p>
       <button id="reset" class="danger">Reset everything</button>
+    </section>`;
+}
+
+function bankHtml(): string {
+  if (!bankEnabled) return '';
+  const b = state.bank;
+  const busy = bankBusy ? 'disabled' : '';
+  return `
+    <section class="card settings">
+      <h2>Linked bank</h2>
+      ${
+        b
+          ? `<ul class="bank-accounts">${b.accounts
+              .map(
+                (a) => `<li><div><strong>${esc(a.name)}</strong><small>${esc(a.type)}${a.mask ? ` &middot;&middot;${esc(a.mask)}` : ''}</small></div>
+                <span>${a.balance === null ? '-' : formatMoney(a.balance)}</span></li>`,
+              )
+              .join('')}</ul>
+            <p class="hint">Last synced ${esc(new Date(b.syncedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</p>`
+          : '<p class="hint">No bank connected yet. Connect one to import your spending automatically.</p>'
+      }
+      ${bankMsg ? `<p class="import-msg" role="status">${esc(bankMsg)}</p>` : ''}
+      ${
+        b
+          ? `<button id="sync-bank" ${busy}>${bankBusy ? 'Syncing...' : 'Sync now'}</button>
+            <button id="link-bank" class="secondary" ${busy}>Connect another bank</button>
+            <button id="unlink-bank" class="danger" ${busy}>Disconnect bank</button>`
+          : `<button id="link-bank" ${busy}>${bankBusy ? 'Connecting...' : 'Connect bank'}</button>`
+      }
     </section>`;
 }
 
@@ -312,11 +456,45 @@ function renderDashboard(profile: Profile): void {
     editing = true;
     render();
   });
-  app.querySelector('#reset')?.addEventListener('click', () => {
-    if (!confirm('Delete your buddy and all your data? This cannot be undone.')) return;
+  app.querySelector('#permissions')?.addEventListener('click', () => {
+    managingConsent = true;
+    render();
+  });
+  app.querySelector('#logout')?.addEventListener('click', async () => {
+    await signOut();
+    render();
+  });
+  app.querySelector('#link-bank')?.addEventListener('click', () => void linkBank());
+  app.querySelector('#sync-bank')?.addEventListener('click', () => void syncNow(false));
+  app.querySelector('#unlink-bank')?.addEventListener('click', async () => {
+    if (!confirm('Disconnect your bank? Transactions already imported stay in OinkCoin.')) return;
+    try {
+      await disconnectBank();
+      state.bank = null;
+      bankMsg = 'Bank disconnected. OinkCoin can no longer see your accounts.';
+      saveState(state);
+    } catch (err) {
+      bankMsg = errorText(err);
+    }
+    render();
+  });
+  app.querySelector('#reset')?.addEventListener('click', async () => {
+    if (!confirm('Delete your account, buddy and all your data? This cannot be undone.')) return;
+    if (bankEnabled) {
+      try {
+        await deleteServerAccount();
+      } catch (err) {
+        bankMsg = errorText(err);
+        render();
+        return;
+      }
+    }
+    clearState();
     Object.assign(state, emptyState());
-    view = 'buddy';
-    persist();
+    stateOwner = '';
+    if (bankEnabled) await signOut();
+    else deleteLocalAccount();
+    render();
   });
 
   // Store
@@ -384,6 +562,7 @@ function renderDashboard(profile: Profile): void {
     state.expenses.push(expense);
     moneyMsg = '';
     persist();
+    checkAlerts();
   });
   app.querySelector<HTMLInputElement>('#statement')?.addEventListener('change', async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
@@ -430,4 +609,4 @@ function doAction(profile: Profile, action: CareAction): void {
   reactTimer = window.setTimeout(render, 2200);
 }
 
-render();
+initAuth(render).then(render);

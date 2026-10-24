@@ -44,6 +44,18 @@ export interface Care {
 export type Slot = 'hat' | 'eyes' | 'neck';
 export type Equipped = Partial<Record<Slot, string>>;
 
+export interface BankAccount {
+  name: string;
+  mask: string | null;
+  type: string;
+  balance: number | null;
+}
+
+export interface Bank {
+  accounts: BankAccount[];
+  syncedAt: number;
+}
+
 export interface AppState {
   profile: Profile | null;
   expenses: Expense[];
@@ -53,4 +65,5 @@ export interface AppState {
   rewards: string[];
   owned: string[];
   equipped: Equipped;
+  bank: Bank | null;
 }
