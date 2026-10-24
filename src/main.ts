@@ -63,6 +63,7 @@ let managingConsent = false;
 let settingUpTwoFactor = false;
 let cloudLoading = false;
 let goalsOpen = false;
+let categoriesOpen = false;
 let friendsData: FriendsData | null = null;
 let friendsLoading = false;
 let friendsFailed = false;
@@ -446,10 +447,7 @@ function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): str
 
     <section class="card">${renderCategoryDetail(selected, view.spent)}</section>
 
-    <section class="card">
-      <h2>Spending categories</h2>
-      ${renderCategoryList(view, selected.category)}
-    </section>
+    ${categoriesCard(view, selected.category)}
 
     <nav class="action-bar" aria-label="Care for your buddy">
       ${CARE_BUTTONS.map(
@@ -505,6 +503,19 @@ function historyHtml(profile: Profile, now: Analysis, mood: Mood): string {
     </section>`;
 }
 
+/** Folded to one line ("Spending categories · 2 over limit") until opened. */
+function categoriesCard(a: Analysis, selected: Category): string {
+  const over = a.categories.filter((c) => c.spent > 0 && c.ratio > 1).length;
+  return `
+    <details class="card fold" id="categories-card" ${categoriesOpen ? 'open' : ''}>
+      <summary class="fold-head">
+        <h2>Spending categories</h2>
+        <span class="fold-count ${over ? 'neg' : 'pos'}">${over ? `${over} over limit` : 'All on track'}</span>
+      </summary>
+      ${renderCategoryList(a, selected)}
+    </details>`;
+}
+
 function reportHtml(profile: Profile, view: Analysis): string {
   const expenses = state.expenses
     .filter((e) => e.date.startsWith(view.monthKey))
@@ -526,10 +537,7 @@ function reportHtml(profile: Profile, view: Analysis): string {
       </div>
     </section>
 
-    <section class="card">
-      <h2>Spending categories</h2>
-      ${renderCategoryList(view, selected.category)}
-    </section>
+    ${categoriesCard(view, selected.category)}
 
     <section class="card">
       <h2>Add expense</h2>
@@ -752,6 +760,9 @@ function renderDashboard(profile: Profile): void {
   // Keep the goals card open or closed across re-renders.
   app.querySelector<HTMLDetailsElement>('#goals-card')?.addEventListener('toggle', (e) => {
     goalsOpen = (e.target as HTMLDetailsElement).open;
+  });
+  app.querySelector<HTMLDetailsElement>('#categories-card')?.addEventListener('toggle', (e) => {
+    categoriesOpen = (e.target as HTMLDetailsElement).open;
   });
   app.querySelector('#clear-notices')?.addEventListener('click', () => {
     state.notices = [];

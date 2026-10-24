@@ -61,10 +61,10 @@ export function renderGoals(state: AppState, profile: Profile, a: Analysis, open
   }).join('');
 
   return `
-    <details class="card goals" id="goals-card" ${open ? 'open' : ''}>
-      <summary class="goals-head">
+    <details class="card goals fold" id="goals-card" ${open ? 'open' : ''}>
+      <summary class="fold-head">
         <h2>This month's goals</h2>
-        <span class="goals-count ${onTrack === goals.length ? 'pos' : onTrack === 0 ? 'neg' : ''}">${onTrack} of ${goals.length} on track</span>
+        <span class="fold-count ${onTrack === goals.length ? 'pos' : onTrack === 0 ? 'neg' : ''}">${onTrack} of ${goals.length} on track</span>
       </summary>
       ${goals.map(goalRow).join('')}
 
