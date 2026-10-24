@@ -69,6 +69,16 @@ async function unseal(stored: string): Promise<string> {
   return new TextDecoder().decode(plain);
 }
 
+/** The session's assurance level: "aal2" once a two-factor code was entered. The JWT is already verified by getUser. */
+function assuranceLevel(jwt: string): string | undefined {
+  try {
+    const part = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '='))).aal;
+  } catch {
+    return undefined;
+  }
+}
+
 function requireConsent(user: User): void {
   const scopes: string[] = user.user_metadata?.consent?.scopes ?? [];
   if (!scopes.includes('balances') || !scopes.includes('transactions')) {
@@ -145,6 +155,8 @@ Deno.serve(async (req) => {
     const { data } = await admin.auth.getUser(jwt);
     const user = data.user;
     if (!user) throw new HttpError(401, 'Please log in again.');
+    const hasTwoFactor = user.factors?.some((f) => f.status === 'verified') ?? false;
+    if (hasTwoFactor && assuranceLevel(jwt) !== 'aal2') throw new HttpError(401, 'Enter your two-factor code to continue.');
 
     const body = await req.json();
     switch (body.action) {

@@ -58,6 +58,7 @@ export async function initAuth(onSignedOut: () => void): Promise<void> {
   if (supabase) {
     const { data } = await supabase.auth.getSession();
     user = fromSupabase(data.session?.user);
+    await refreshTwoFactor();
     supabase.auth.onAuthStateChange((event, session) => {
       user = fromSupabase(session?.user);
       if (event === 'SIGNED_OUT') onSignedOut();
@@ -83,6 +84,140 @@ export async function signOut(): Promise<void> {
   if (supabase) await supabase.auth.signOut();
   localStorage.removeItem(SESSION_KEY);
   user = null;
+  twoFactor = null;
+  twoFactorPending = false;
+}
+
+// Two-factor sign-in uses Supabase MFA with an authenticator app (TOTP).
+// null means unavailable, which is the case for device-only accounts.
+let twoFactor: boolean | null = null;
+let twoFactorPending = false;
+export const twoFactorOn = (): boolean | null => twoFactor;
+export const needsTwoFactor = (): boolean => twoFactorPending;
+
+async function refreshTwoFactor(): Promise<void> {
+  twoFactor = null;
+  twoFactorPending = false;
+  if (!supabase || !user) return;
+  const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  twoFactor = data?.nextLevel === 'aal2';
+  twoFactorPending = data?.currentLevel === 'aal1' && data?.nextLevel === 'aal2';
+}
+
+async function verifyCode(factorId: string, code: string): Promise<void> {
+  const { error } = await supabase!.auth.mfa.challengeAndVerify({ factorId, code });
+  if (error) throw new Error("That code didn't work. Check your authenticator app and try again.");
+}
+
+export async function disableTwoFactor(): Promise<void> {
+  const { data, error } = await supabase!.auth.mfa.listFactors();
+  if (error) throw new Error(error.message);
+  for (const f of data.totp) {
+    const { error: e } = await supabase!.auth.mfa.unenroll({ factorId: f.id });
+    if (e) throw new Error(e.message);
+  }
+  await refreshTwoFactor();
+}
+
+const CODE_INPUT =
+  '<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="123456" />';
+
+function codeForm(app: HTMLElement, submit: (code: string) => Promise<void>): void {
+  const form = app.querySelector<HTMLFormElement>('#code-form')!;
+  const msg = app.querySelector<HTMLElement>('#code-error')!;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    button.disabled = true;
+    try {
+      await submit(String(new FormData(form).get('code')).trim());
+    } catch (err) {
+      msg.textContent = err instanceof Error ? err.message : 'Something went wrong. Try again.';
+      msg.hidden = false;
+      button.disabled = false;
+    }
+  });
+}
+
+/** Asked after the password when the account has two-factor on. */
+export function renderTwoFactorChallenge(app: HTMLElement, done: () => void): void {
+  app.innerHTML = `
+    <main class="onboard card auth">
+      <div class="onboard-head">${brand()}</div>
+      <h2>Enter your code</h2>
+      <p class="hint">Open your authenticator app and enter the 6-digit code for OinkCoin.</p>
+      <form id="code-form">
+        <label class="field">Code ${CODE_INPUT}</label>
+        <p class="import-msg error" id="code-error" role="alert" hidden></p>
+        <div class="actions"><button type="submit">Verify</button></div>
+      </form>
+      <p class="auth-switch"><button type="button" class="link" id="switch-account">Use a different account</button></p>
+    </main>`;
+  app.querySelector<HTMLInputElement>('input[name="code"]')!.focus();
+  app.querySelector('#switch-account')!.addEventListener('click', async () => {
+    await signOut();
+    done();
+  });
+  codeForm(app, async (code) => {
+    const { data, error } = await supabase!.auth.mfa.listFactors();
+    const factor = data?.totp[0];
+    if (error || !factor) throw new Error('Could not find your authenticator. Try logging in again.');
+    await verifyCode(factor.id, code);
+    twoFactorPending = false;
+    done();
+  });
+}
+
+/** Turns on two-factor: scan a QR code, then confirm with a first code. */
+export async function renderTwoFactorSetup(app: HTMLElement, done: () => void, cancel: () => void): Promise<void> {
+  app.innerHTML = `<main class="onboard card auth"><div class="onboard-head">${brand()}</div><p class="hint">Setting up...</p></main>`;
+  const mfa = supabase!.auth.mfa;
+  const fail = (message: string) => {
+    app.innerHTML = `
+      <main class="onboard card auth">
+        <div class="onboard-head">${brand()}</div>
+        <h2>Two-factor sign-in</h2>
+        <p class="import-msg error" role="alert">${esc(message)}</p>
+        <div class="actions"><button type="button" class="secondary" id="cancel">Back</button></div>
+      </main>`;
+    app.querySelector('#cancel')!.addEventListener('click', cancel);
+  };
+
+  // Clear out half-finished setups so the new one can use the same name.
+  const { data: existing } = await mfa.listFactors();
+  for (const f of existing?.all ?? []) {
+    if (f.factor_type === 'totp' && f.status === 'unverified') await mfa.unenroll({ factorId: f.id });
+  }
+  const { data, error } = await mfa.enroll({ factorType: 'totp', friendlyName: 'OinkCoin' });
+  if (error || !data) return fail(error?.message ?? 'Could not start two-factor setup.');
+
+  const qr = data.totp.qr_code;
+  const qrSrc = qr.startsWith('data:') ? qr : `data:image/svg+xml;utf-8,${encodeURIComponent(qr)}`;
+  app.innerHTML = `
+    <main class="onboard card auth two-factor">
+      <div class="onboard-head">${brand()}</div>
+      <h2>Turn on two-factor sign-in</h2>
+      <p class="hint">Scan this with an authenticator app like Google Authenticator, Microsoft Authenticator or 1Password.</p>
+      <img class="qr" src="${esc(qrSrc)}" alt="QR code for your authenticator app" width="200" height="200" />
+      <p class="hint">Can't scan it? Enter this key instead:<br /><code class="secret">${esc(data.totp.secret)}</code></p>
+      <form id="code-form">
+        <label class="field">Then enter the 6-digit code it shows ${CODE_INPUT}</label>
+        <p class="import-msg error" id="code-error" role="alert" hidden></p>
+        <div class="actions">
+          <button type="button" class="secondary" id="cancel">Cancel</button>
+          <button type="submit">Turn on</button>
+        </div>
+      </form>
+    </main>`;
+  app.querySelector('#cancel')!.addEventListener('click', async () => {
+    await mfa.unenroll({ factorId: data.id });
+    cancel();
+  });
+  codeForm(app, async (code) => {
+    await verifyCode(data.id, code);
+    await refreshTwoFactor();
+    done();
+  });
 }
 
 /** Removes the device-only account. Server accounts are deleted by the bank function instead. */
@@ -112,6 +247,7 @@ async function signUp(email: string, password: string): Promise<boolean> {
     });
     if (error) throw new Error(error.message);
     user = fromSupabase(data.session?.user);
+    await refreshTwoFactor();
     return !!data.session;
   }
   const existing = loadLocal();
@@ -130,6 +266,7 @@ async function logIn(email: string, password: string): Promise<void> {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.code === 'email_not_confirmed' ? 'Confirm your email first, then log in.' : 'Email or password is incorrect.');
     user = fromSupabase(data.user);
+    await refreshTwoFactor();
     return;
   }
   const local = loadLocal();

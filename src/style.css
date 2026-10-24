@@ -499,3 +499,8 @@ button.link:hover { background: none; text-decoration: underline; }
 .history-body p { margin: 0 0 0.2rem; font-size: 0.9rem; }
 .history-body small { color: var(--muted); }
 .history li.mood-dead .history-pet { opacity: 0.75; }
+
+/* Two-factor */
+.two-factor .qr { display: block; margin: 1rem auto; width: 200px; height: 200px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 0.5rem; }
+.two-factor .secret { display: inline-block; margin-top: 0.3rem; padding: 0.3rem 0.5rem; background: #faf8f9; border-radius: 8px; font-size: 0.85rem; word-break: break-all; user-select: all; }
+.settings .small-print { font-size: 0.8rem; margin-top: 0.6rem; }
