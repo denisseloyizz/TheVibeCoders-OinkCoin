@@ -47,10 +47,10 @@ import {
   type FriendsData,
 } from './social';
 import { renderStore } from './store';
-import { CATEGORIES, type Care, type Category, type Expense, type Mood, type Profile } from './types';
+import { CATEGORIES, type Care, type Category, type Expense, type Mood, type NoticeKind, type Profile } from './types';
 import { esc } from './util';
 
-type View = 'buddy' | 'history' | 'friends' | 'report' | 'store' | 'settings' | 'learn';
+type View = 'buddy' | 'history' | 'friends' | 'notifications' | 'report' | 'store' | 'settings' | 'learn';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const state = emptyState();
@@ -108,24 +108,47 @@ const CARE_BUTTONS: { action: CareAction; stat: 'hunger' | 'fun' | 'love'; label
 const STAT_NAME = { hunger: 'Hunger', fun: 'Fun', love: 'Love' };
 const careLabel = (b: (typeof CARE_BUTTONS)[number], value: number) => `${b.label} (${STAT_NAME[b.stat]} ${value}%)`;
 
-/** Pop-ups stack in one column at the top, so several at once don't cover each other. */
+const toastQueue: string[] = [];
+let toastShowing = false;
+
+/** Pop-ups wait in line and show one at a time. */
 function showToast(html: string): void {
-  let stack = document.querySelector<HTMLElement>('.toasts');
-  if (!stack) {
-    stack = document.createElement('div');
-    stack.className = 'toasts';
-    document.body.append(stack);
-  }
+  toastQueue.push(html);
+  if (!toastShowing) nextToast();
+}
+
+function nextToast(): void {
+  const html = toastQueue.shift();
+  toastShowing = html !== undefined;
+  if (html === undefined) return;
   const toast = document.createElement('div');
   toast.className = 'toast';
   toast.setAttribute('role', 'status');
   toast.innerHTML = html;
-  stack.append(toast);
+  document.body.append(toast);
   requestAnimationFrame(() => toast.classList.add('show'));
   setTimeout(() => {
     toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 400);
+    setTimeout(() => {
+      toast.remove();
+      nextToast();
+    }, 400);
   }, 3200);
+}
+
+const NOTICE_ICON: Record<NoticeKind, string> = {
+  coins: ICONS.coin,
+  alert: LINE.bulb,
+  cheer: ICONS.heart,
+  bank: ICONS.coin,
+  error: LINE.close,
+};
+
+/** Adds to the notifications list (kept with the account) and shows it as a pop-up. */
+function notify(kind: NoticeKind, text: string): void {
+  state.notices = [{ id: crypto.randomUUID(), kind, text, at: Date.now(), read: false }, ...state.notices].slice(0, 40);
+  saveState(state);
+  showToast(`${NOTICE_ICON[kind]}<span>${esc(text)}</span>`);
 }
 
 function collectRewards(): void {
@@ -133,9 +156,8 @@ function collectRewards(): void {
   if (awards.length === 0) return;
   state.coins += awards.length * COINS_PER_GOAL;
   state.rewards.push(...awards.map((a) => a.key));
-  saveState(state);
-  const what = awards.length === 1 ? esc(awards[0].label) : `${awards.length} goals`;
-  showToast(`${ICONS.coin}<span>Goal met: ${what} &middot; <b>+${awards.length * COINS_PER_GOAL} coins</b></span>`);
+  const what = awards.length === 1 ? awards[0].label : `${awards.length} goals`;
+  notify('coins', `Goal met: ${what} · +${awards.length * COINS_PER_GOAL} coins`);
 }
 
 function persist(): void {
@@ -154,10 +176,9 @@ function checkAlerts(): void {
   if (fresh.length === 0) return;
   // Remember them with the account (older months dropped) so they don't pop up again on every open.
   state.alerts = [...state.alerts.filter((k) => k.startsWith(now.monthKey)), ...fresh.map((c) => `${now.monthKey}:${c.category}`)];
-  saveState(state);
-  const list = fresh.map((c) => `${esc(c.category)} <b>${Math.round(c.ratio * 100)}%</b>`);
+  const list = fresh.map((c) => `${c.category} ${Math.round(c.ratio * 100)}%`);
   const joined = list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
-  showToast(`${LINE.bulb}<span>Spending alert: ${joined} of this month's limit${fresh.length === 1 ? '' : 's'}.</span>`);
+  notify('alert', `Spending alert: ${joined} of this month's limit${fresh.length === 1 ? '' : 's'}.`);
 }
 
 async function syncNow(quiet: boolean): Promise<void> {
@@ -176,7 +197,7 @@ async function syncNow(quiet: boolean): Promise<void> {
       : r.ready
         ? `Synced ${added} new transaction${added === 1 ? '' : 's'}.`
         : 'Your bank is still preparing your transactions. Try syncing again in a minute.';
-    if (bankMsg && (!quiet || added)) showToast(`${ICONS.coin}<span>${esc(bankMsg)}</span>`);
+    if (bankMsg && (!quiet || added)) notify('bank', bankMsg);
     checkAlerts();
   } catch (err) {
     if (!quiet) bankMsg = errorText(err);
@@ -194,7 +215,7 @@ async function linkBank(resume = false): Promise<void> {
     if (await (resume ? resumeBankLink() : connectBank())) return await syncNow(false);
   } catch (err) {
     bankMsg = errorText(err);
-    showToast(`${LINE.close}<span>${esc(bankMsg)}</span>`);
+    notify('error', bankMsg);
   }
   bankBusy = false;
   render();
@@ -256,13 +277,12 @@ async function checkCheers(): Promise<void> {
   try {
     const from = await collectCheers();
     if (!from.length) return;
-    let care = currentCare(state.care);
-    for (const name of from) {
-      care = { ...care, love: Math.min(100, care.love + 10) };
-      showToast(`${ICONS.heart}<span><b>${esc(name)}</b> cheered for ${esc(state.profile?.name ?? 'your buddy')}! +10 Love</span>`);
-    }
-    state.care = care;
-    persist();
+    const care = currentCare(state.care);
+    state.care = { ...care, love: Math.min(100, care.love + 10 * from.length) };
+    const names = [...new Set(from)];
+    const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+    notify('cheer', `${who} cheered for ${state.profile?.name ?? 'your buddy'}! +${10 * from.length} Love`);
+    render();
   } catch (err) {
     console.warn('Could not check cheers:', err);
   }
@@ -624,6 +644,36 @@ function bankHtml(): string {
     </section>`;
 }
 
+function timeAgo(at: number): string {
+  const mins = Math.round((Date.now() - at) / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  if (mins < 24 * 60) return `${Math.round(mins / 60)} h ago`;
+  return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function notificationsHtml(): string {
+  return `
+    <section class="card">
+      <div class="notices-head">
+        <h2>Notifications</h2>
+        ${state.notices.length ? '<button class="link" id="clear-notices">Clear all</button>' : ''}
+      </div>
+      ${
+        state.notices.length
+          ? `<ul class="notices">${state.notices
+              .map(
+                (n) => `<li class="${n.read ? '' : 'unread'}">
+                  <span class="notice-icon">${NOTICE_ICON[n.kind]}</span>
+                  <div><p>${esc(n.text)}</p><small>${timeAgo(n.at)}</small></div>
+                </li>`,
+              )
+              .join('')}</ul>`
+          : '<p class="empty">Nothing yet. Coin rewards, spending alerts, cheers from friends and bank syncs show up here.</p>'
+      }
+    </section>`;
+}
+
 function drawerHtml(profile: Profile, mood: Mood): string {
   return `
     <div class="scrim" id="scrim"></div>
@@ -659,6 +709,7 @@ function renderDashboard(profile: Profile): void {
   const body = {
     buddy: () => homeHtml(profile, now, care, mood),
     history: () => historyHtml(profile, now, mood),
+    notifications: () => notificationsHtml(),
     friends: () => {
       if (!socialEnabled) {
         return `${myHouseHtml(state, profile, mood)}<section class="card"><h2>Friends</h2><p class="hint">Friends need an online account. This copy of OinkCoin isn't connected to one.</p></section>`;
@@ -675,16 +726,32 @@ function renderDashboard(profile: Profile): void {
   }[view]();
 
   if (socialEnabled) publishBuddy(buddyCard(profile, mood));
+  const unread = view === 'notifications' ? 0 : state.notices.filter((n) => !n.read).length;
 
   setDrawer(false);
   app.innerHTML = `
     <header class="topbar">
       <button class="menu-btn" id="menu" aria-label="Open menu" aria-expanded="false" aria-controls="drawer"><span></span><span></span><span></span></button>
       ${brand()}
-      <button class="coin-chip" data-view="store" aria-label="${state.coins} coins, open store">${ICONS.coin}<b>${state.coins}</b></button>
+      <div class="top-actions">
+        <button class="bell${unread ? ' has-unread' : ''}" data-view="notifications" aria-label="Notifications${unread ? `, ${unread} unread` : ''}">
+          ${LINE.bell}${unread ? `<span class="badge">${unread > 9 ? '9+' : unread}</span>` : ''}
+        </button>
+        <button class="coin-chip" data-view="store" aria-label="${state.coins} coins, open store">${ICONS.coin}<b>${state.coins}</b></button>
+      </div>
     </header>
     ${drawerHtml(profile, mood)}
     <main class="stack">${body}</main>`;
+
+  // Opening the list marks everything read (shown highlighted this once).
+  if (view === 'notifications' && state.notices.some((n) => !n.read)) {
+    state.notices = state.notices.map((n) => ({ ...n, read: true }));
+    saveState(state);
+  }
+  app.querySelector('#clear-notices')?.addEventListener('click', () => {
+    state.notices = [];
+    persist();
+  });
 
   app.querySelector('#menu')!.addEventListener('click', () => setDrawer(true));
   app.querySelector('#close-menu')!.addEventListener('click', () => setDrawer(false));

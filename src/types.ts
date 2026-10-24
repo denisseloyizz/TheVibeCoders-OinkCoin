@@ -56,6 +56,17 @@ export interface Bank {
   syncedAt: number;
 }
 
+export type NoticeKind = 'coins' | 'alert' | 'cheer' | 'bank' | 'error';
+
+/** Something worth keeping in the notifications list (rewards, alerts, cheers, bank syncs). */
+export interface Notice {
+  id: string;
+  kind: NoticeKind;
+  text: string;
+  at: number;
+  read: boolean;
+}
+
 export interface AppState {
   profile: Profile | null;
   expenses: Expense[];
@@ -65,6 +76,8 @@ export interface AppState {
   rewards: string[];
   /** Spending alerts already shown, e.g. "2026-10:Shopping", so each shows once a month. */
   alerts: string[];
+  /** Newest first, capped. */
+  notices: Notice[];
   owned: string[];
   equipped: Equipped;
   /** Decor placed in the buddy's house, by slot (see house.ts). */
