@@ -1093,6 +1093,29 @@ if (cloudEnabled) {
   });
 }
 
+// GitHub Pages lets browsers reuse the page for 10 minutes, so after a deploy people kept seeing the
+// old version. Check for a newer build when the app opens or comes back to the foreground, and reload.
+async function checkForUpdate(): Promise<void> {
+  if (import.meta.env.DEV || location.hash) return; // don't interrupt email links that carry a #token
+  try {
+    const current = document.querySelector<HTMLScriptElement>('script[type="module"][src*="assets/index-"]')?.src ?? '';
+    const html = await (await fetch(`${location.pathname}?check=${Date.now()}`, { cache: 'no-store' })).text();
+    const latest = html.match(/assets\/index-[\w-]+\.js/)?.[0];
+    if (!latest || !current || current.endsWith(latest)) return;
+    // Only once per new build, so a stale cache can never cause a reload loop.
+    if (sessionStorage.getItem('oinkcoin-reloaded-for') === latest) return;
+    sessionStorage.setItem('oinkcoin-reloaded-for', latest);
+    location.replace(`${location.pathname}?v=${Date.now()}`);
+  } catch {
+    // Offline: keep the current version.
+  }
+}
+if (new URLSearchParams(location.search).has('v')) history.replaceState(null, '', location.pathname + location.hash);
+void checkForUpdate();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') void checkForUpdate();
+});
+
 initAuth(render).then(() => {
   render();
   if (bankEnabled && isOAuthReturn() && currentUser()?.consent) void linkBank(true);
