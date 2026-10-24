@@ -3,7 +3,7 @@ import { ITEM_BY_ID } from './accessories';
 import { currentUser, deleteLocalAccount, initAuth, renderAuth, renderConsent, SCOPES, signOut } from './auth';
 import { renderAvatar } from './avatar';
 import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, isOAuthReturn, resumeBankLink, syncBank } from './bank';
-import { analyze, formatMoney, localDateKey, type Analysis } from './budget';
+import { analyze, formatMoney, localDateKey, pastMessage, type Analysis } from './budget';
 import { applyAction, careMood, careNote, currentCare, type CareAction } from './care';
 import { ICONS, LINE, line } from './icons';
 import { renderLearn } from './learn';
@@ -17,7 +17,7 @@ import { renderStore } from './store';
 import { CATEGORIES, type Care, type Category, type Expense, type Mood, type Profile } from './types';
 import { esc } from './util';
 
-type View = 'buddy' | 'report' | 'store' | 'settings' | 'learn';
+type View = 'buddy' | 'history' | 'report' | 'store' | 'settings' | 'learn';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const state = emptyState();
@@ -38,6 +38,7 @@ const MOOD_LABEL: Record<Mood, string> = { happy: 'Happy', okay: 'Okay', sad: 'S
 
 const MENU: { view: View; label: string; icon: string }[] = [
   { view: 'buddy', label: 'Budget Buddy', icon: LINE.pet },
+  { view: 'history', label: 'Pet History', icon: line('<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>') },
   { view: 'report', label: 'Full Report', icon: line('<path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/>') },
   { view: 'store', label: 'Store', icon: line('<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>') },
   { view: 'learn', label: 'Grow Your Money', icon: line('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>') },
@@ -216,16 +217,33 @@ function monthNav(a: Analysis): string {
   </div>`;
 }
 
-function homeHtml(profile: Profile, view: Analysis, now: Analysis, care: Care, mood: Mood): string {
-  const message = mood === 'dead' ? now.message : (careNote(profile.name, care) ?? now.message);
+const monthStart = (offset = 0) => new Date(new Date().getFullYear(), new Date().getMonth() + offset, 1);
+const monthLabel = (d: Date, year = true) => d.toLocaleDateString(undefined, year ? { month: 'long', year: 'numeric' } : { month: 'long' });
+
+/** Each month the buddy starts fresh; before any spending, say so (and remember a rough last month). */
+function freshStartMessage(profile: Profile): string {
+  const last = analyze(profile, state.expenses, monthStart(-1));
+  const month = monthLabel(monthStart(), false);
+  if (last.spent > 0 && (last.mood === 'dead' || last.mood === 'angry')) {
+    return `${profile.name} is back! ${month} is a fresh start after a rough ${monthLabel(monthStart(-1), false)}. Let's keep wants low this time.`;
+  }
+  return `A fresh ${month} for ${profile.name}! Add an expense or sync your bank to get started.`;
+}
+
+function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): string {
+  const base = view.spent === 0 ? freshStartMessage(profile) : view.message;
+  const message = mood === 'dead' ? base : (careNote(profile.name, care) ?? base);
   const selected = view.categories.find((c) => c.category === selectedCat) ?? view.topWant ?? view.categories[0];
-  const monthName = viewMonth.toLocaleDateString(undefined, { month: 'long' });
-  const asOf = isCurrentMonth(view) ? new Date() : new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0);
+  const monthName = monthLabel(monthStart(), false);
+  const asOf = new Date();
   const dead = mood === 'dead';
 
   return `
     <section class="card pet-card mood-${mood}">
-      ${monthNav(view)}
+      <div class="month-nav">
+        <h2>${esc(monthLabel(monthStart()))}</h2>
+        <button class="link" data-view="history">Past months</button>
+      </div>
       <p class="speech">${esc(message)}</p>
       <div class="ring-stage">
         ${renderArc(view, profile.budget, selectedCat)}
@@ -242,7 +260,7 @@ function homeHtml(profile: Profile, view: Analysis, now: Analysis, care: Care, m
         <div class="want"><small>Wants</small><b>${formatMoney(view.wantsSpent)} <span>/ ${formatMoney(view.wantsLimit)}</span></b></div>
       </div>
       <div class="pet-name"><h2>${esc(profile.name)}</h2><span class="mood-badge">${MOOD_LABEL[mood]}</span></div>
-      ${now.tip ? `<p class="tip">${LINE.bulb}<span>${esc(now.tip)}</span></p>` : ''}
+      ${view.tip ? `<p class="tip">${LINE.bulb}<span>${esc(view.tip)}</span></p>` : ''}
     </section>
 
     <section class="card">${renderCategoryDetail(selected, view.spent)}</section>
@@ -259,6 +277,51 @@ function homeHtml(profile: Profile, view: Analysis, now: Analysis, care: Care, m
       ).join('')}
       <button data-view="store" class="plain" style="--c:#efe9ff"><span class="bubble">${ICONS.bag}</span><span>Shop</span></button>
     </nav>`;
+}
+
+/** Months before this one that have any spending, newest first. */
+function pastMonths(): Date[] {
+  const current = localDateKey().slice(0, 7);
+  const keys = [...new Set(state.expenses.map((e) => e.date.slice(0, 7)))].filter((k) => k < current).sort().reverse();
+  return keys.map((k) => new Date(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, 1));
+}
+
+function historyHtml(profile: Profile, now: Analysis, mood: Mood): string {
+  const past = pastMonths().map((m) => ({ month: m, a: analyze(profile, state.expenses, m) }));
+  const count = (m: Mood) => past.filter((p) => p.a.mood === m).length;
+  const happy = count('happy');
+  const fainted = count('dead');
+
+  const item = (month: Date, a: Analysis, moodNow: Mood, message: string, current: boolean) => `
+    <li class="mood-${moodNow}${current ? ' current' : ''}">
+      <div class="history-pet">${renderAvatar(profile.character, moodNow, state.equipped)}</div>
+      <div class="history-body">
+        <div class="history-head"><strong>${esc(current ? 'This month' : monthLabel(month))}</strong><span class="mood-badge">${MOOD_LABEL[moodNow]}</span></div>
+        <p>${esc(message)}</p>
+        <small>${formatMoney(a.spent)} of ${formatMoney(profile.budget)} spent${current ? ' so far' : ''}</small>
+      </div>
+      <button class="icon" data-report="${a.monthKey}" aria-label="See ${esc(monthLabel(month))} report">${LINE.chevronRight}</button>
+    </li>`;
+
+  return `
+    <section class="card">
+      <h2>${esc(profile.name)}'s history</h2>
+      <p class="hint">A fresh ${esc(profile.name)} starts every month. Here's how each one went.</p>
+      ${
+        past.length
+          ? `<div class="history-stats">
+              <div><strong>${past.length}</strong><small>month${past.length === 1 ? '' : 's'} tracked</small></div>
+              <div><strong>${happy}</strong><small>happy month${happy === 1 ? '' : 's'}</small></div>
+              <div><strong>${fainted}</strong><small>time${fainted === 1 ? '' : 's'} fainted</small></div>
+            </div>`
+          : ''
+      }
+      <ul class="history">
+        ${item(monthStart(), now, mood, now.spent === 0 ? freshStartMessage(profile) : now.message, true)}
+        ${past.map((p) => item(p.month, p.a, p.a.mood, pastMessage(profile, p.a, monthLabel(p.month, false)), false)).join('')}
+      </ul>
+      ${past.length ? '' : `<p class="empty">No past months yet. Come back next month to see how ${esc(profile.name)} did.</p>`}
+    </section>`;
 }
 
 function reportHtml(profile: Profile, view: Analysis): string {
@@ -423,7 +486,8 @@ function renderDashboard(profile: Profile): void {
   const care = currentCare(state.care);
   const mood = careMood(now.mood, care);
   const body = {
-    buddy: () => homeHtml(profile, month, now, care, mood),
+    buddy: () => homeHtml(profile, now, care, mood),
+    history: () => historyHtml(profile, now, mood),
     report: () => reportHtml(profile, month),
     store: () => renderStore(state, profile),
     learn: () => renderLearn(profile, now),
@@ -523,6 +587,16 @@ function renderDashboard(profile: Profile): void {
     selectedCat = null;
     render();
   };
+  app.querySelectorAll<HTMLButtonElement>('[data-report]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const [y, m] = b.dataset.report!.split('-').map(Number);
+      viewMonth = new Date(y, m - 1, 1);
+      view = 'report';
+      selectedCat = null;
+      render();
+      window.scrollTo(0, 0);
+    }),
+  );
   app.querySelector('#prev')?.addEventListener('click', () => changeMonth(-1));
   app.querySelector('#next')?.addEventListener('click', () => changeMonth(1));
 

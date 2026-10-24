@@ -484,3 +484,18 @@ button.link:hover { background: none; text-decoration: underline; }
 .settings .import-msg { margin-bottom: 0.75rem; }
 .auth-switch.legal { font-size: 0.8rem; margin-top: 0.75rem; }
 .auth a, .consent a { color: var(--pink-deep); }
+
+/* Pet history */
+.pet-card .month-nav button.link { font-size: 0.85rem; }
+.history-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 1rem 0; }
+.history-stats div { background: #faf8f9; border-radius: 12px; padding: 0.6rem; text-align: center; }
+.history-stats strong { display: block; font-size: 1.3rem; }
+.history-stats small { color: var(--muted); }
+.history { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+.history li { display: grid; grid-template-columns: 64px 1fr auto; gap: 0.8rem; align-items: center; padding: 0.75rem; border: 1px solid var(--line); border-radius: 14px; }
+.history li.current { border-color: var(--pink); background: var(--pink-soft); }
+.history-pet .avatar { width: 64px; height: 64px; display: block; animation: none; }
+.history-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.2rem; }
+.history-body p { margin: 0 0 0.2rem; font-size: 0.9rem; }
+.history-body small { color: var(--muted); }
+.history li.mood-dead .history-pet { opacity: 0.75; }
