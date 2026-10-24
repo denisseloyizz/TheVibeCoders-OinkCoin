@@ -114,7 +114,7 @@ function budgetStep(d: Draft, h: SpendingHistory | null): string {
       <p class="hint">How much can you spend each month after savings?</p>
       ${input}
       <div class="chips">
-        ${[1000, 2000, 3000, 5000].map((v) => `<button type="button" class="chip" data-budget="${v}">$${v.toLocaleString()}</button>`).join('')}
+        ${[1000, 2000, 3000, 5000].map((v) => `<button type="button" class="chip" data-budget="${v}" aria-pressed="false">$${v.toLocaleString()}</button>`).join('')}
       </div>
       ${preview}`;
   }
@@ -145,7 +145,7 @@ function budgetStep(d: Draft, h: SpendingHistory | null): string {
       ${options
         .map(
           (o) =>
-            `<button type="button" class="chip${o.suggested ? ' suggested' : ''}" data-budget="${o.value}">${o.label} &middot; ${formatMoney(o.value).replace('.00', '')}</button>`,
+            `<button type="button" class="chip" data-budget="${o.value}" aria-pressed="false">${o.label} &middot; ${formatMoney(o.value).replace('.00', '')}${o.suggested ? ' <small class="tag">suggested</small>' : ''}</button>`,
         )
         .join('')}
     </div>
@@ -244,12 +244,22 @@ export function renderOnboarding(
     rerender();
   });
   const budgetInput = form.querySelector<HTMLInputElement>('input[name="budget"]');
+  const budgetChips = app.querySelectorAll<HTMLButtonElement>('[data-budget]');
+  // Highlight the chip that matches the budget, and refresh the category limits.
   const updatePreview = () => {
+    if (!budgetInput) return;
+    const value = Number(budgetInput.value);
+    budgetChips.forEach((b) => {
+      const on = Number(b.dataset.budget) === value;
+      b.classList.toggle('selected', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
     const preview = app.querySelector('#limit-preview');
-    if (preview && budgetInput) preview.innerHTML = limitPreview(Math.max(1, Number(budgetInput.value) || 1), d.focus, history);
+    if (preview) preview.innerHTML = limitPreview(Math.max(1, value || 1), d.focus, history);
   };
   budgetInput?.addEventListener('input', updatePreview);
-  app.querySelectorAll<HTMLButtonElement>('[data-budget]').forEach((b) =>
+  updatePreview();
+  budgetChips.forEach((b) =>
     b.addEventListener('click', () => {
       budgetInput!.value = b.dataset.budget!;
       updatePreview();
