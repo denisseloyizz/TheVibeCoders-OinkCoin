@@ -46,7 +46,7 @@
         <ul>
           <li>OinkCoin can only <em>read</em> your bank data. It can never move money or make payments.</li>
           <li>We never see your bank username or password. You log in to your bank through Plaid.</li>
-          <li>Your transactions and budget are stored on your device, not on our servers.</li>
+          <li>Your OinkCoin data is saved to your account so only you can see it, on any device you sign in to.</li>
           <li>We don't sell your data or show ads.</li>
           <li>You can disconnect your bank or delete your account at any time.</li>
         </ul>
@@ -77,11 +77,14 @@
 
       <h2>Where your data is stored</h2>
       <ul>
-        <li><strong>On your device:</strong> transactions, balances, budget, buddy and settings are saved in your
-          browser or the OinkCoin app.</li>
-        <li><strong>On our server:</strong> your account, your permission choices, and the connection key Plaid
-          gives us for each linked bank. Connection keys are encrypted and can't be read by the app. Transactions
-          pass through our server when you sync, but are not stored there.</li>
+        <li><strong>On our server:</strong> your account, your permission choices, and your OinkCoin data
+          (buddy, budget, coins, transactions and balances) so it follows you across devices. Database rules
+          let only you read or change your data, and if you turn on two-factor sign-in it can't be opened without
+          your code.</li>
+        <li><strong>Bank connection keys:</strong> the key Plaid gives us for each linked bank is stored on our
+          server, encrypted, and can only be used by our server code, never by the app.</li>
+        <li><strong>On your device:</strong> a copy of your OinkCoin data, so the app works quickly. Use
+          &ldquo;Log out &amp; clear this device&rdquo; to remove it.</li>
       </ul>
 
       <h2>Who we share it with</h2>
@@ -99,7 +102,7 @@
         <li><strong>Disconnect your bank:</strong> Profile &amp; Settings &rarr; Disconnect bank. This revokes
           OinkCoin's access through Plaid and deletes the connection key.</li>
         <li><strong>Delete everything:</strong> Profile &amp; Settings &rarr; Reset everything. This deletes your
-          account, revokes bank access, and clears OinkCoin's data from that device.</li>
+          account and all your OinkCoin data from our server, revokes bank access, and clears that device.</li>
       </ul>
 
       <h2>Security</h2>
