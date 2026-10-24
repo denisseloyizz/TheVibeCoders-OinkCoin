@@ -18,6 +18,7 @@ declare global {
     Plaid?: {
       create(config: {
         token: string;
+        receivedRedirectUri?: string;
         onSuccess: (publicToken: string) => void;
         onExit: (err: { display_message?: string | null; error_message?: string } | null) => void;
       }): PlaidHandler;
@@ -68,18 +69,57 @@ function loadPlaid(): Promise<void> {
   return plaidScript;
 }
 
+// Banks that use OAuth send the user to their own site and back to this page with
+// ?oauth_state_id=..., so the link token is kept for the tab to resume Link.
+const LINK_TOKEN_KEY = 'oinkcoin-plaid-link-token';
+const pageUrl = () => location.origin + location.pathname;
+
+function rememberToken(token: string | null): void {
+  try {
+    if (token) sessionStorage.setItem(LINK_TOKEN_KEY, token);
+    else sessionStorage.removeItem(LINK_TOKEN_KEY);
+  } catch {
+    // Storage blocked: OAuth banks fall back to Plaid's pop-up window.
+  }
+}
+
+export const isOAuthReturn = (): boolean => new URLSearchParams(location.search).has('oauth_state_id');
+
 /** Opens Plaid Link. Resolves true once a bank is linked, false if the user closed it. */
 export async function connectBank(): Promise<boolean> {
-  const [{ link_token }] = await Promise.all([call<{ link_token: string }>('link_token'), loadPlaid()]);
+  const [{ link_token }] = await Promise.all([call<{ link_token: string }>('link_token', { redirect_uri: pageUrl() }), loadPlaid()]);
+  rememberToken(link_token);
+  return openLink(link_token);
+}
+
+/** Finishes linking after an OAuth bank redirects back to the app. */
+export async function resumeBankLink(): Promise<boolean> {
+  const received = location.href;
+  history.replaceState(null, '', pageUrl());
+  let token: string | null = null;
+  try {
+    token = sessionStorage.getItem(LINK_TOKEN_KEY);
+  } catch {
+    // Fall through to the error below.
+  }
+  if (!token) throw new Error('The bank connection timed out. Try connecting again.');
+  await loadPlaid();
+  return openLink(token, received);
+}
+
+function openLink(token: string, receivedRedirectUri?: string): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const handler = window.Plaid!.create({
-      token: link_token,
+      token,
+      receivedRedirectUri,
       onSuccess: (publicToken) => {
         handler.destroy();
+        rememberToken(null);
         call('exchange', { public_token: publicToken }).then(() => resolve(true), reject);
       },
       onExit: (err) => {
         handler.destroy();
+        rememberToken(null);
         if (err) reject(new Error(err.display_message || err.error_message || 'Could not connect to your bank.'));
         else resolve(false);
       },

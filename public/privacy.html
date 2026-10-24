@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffc93c" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <title>OinkCoin Privacy Policy</title>
+    <style>
+      :root {
+        --bg: #f7f5f3;
+        --card: #ffffff;
+        --text: #1d1a1c;
+        --muted: #7a7276;
+        --line: #ece7e9;
+        --pink-deep: #c93468;
+        --gold-soft: #fdf4dd;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-size: 15px;
+        line-height: 1.6;
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 1rem; background: var(--bg); }
+      main { max-width: 680px; margin: 0 auto; background: var(--card); border-radius: 18px; padding: 1.75rem 1.5rem; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
+      h1 { font-size: 1.6rem; letter-spacing: -0.02em; margin: 0 0 0.25rem; }
+      h2 { font-size: 1.1rem; margin: 1.75rem 0 0.5rem; letter-spacing: -0.01em; }
+      p, li { margin: 0 0 0.6rem; }
+      ul { padding-left: 1.2rem; }
+      a { color: var(--pink-deep); }
+      .updated { color: var(--muted); margin-bottom: 1.25rem; }
+      .summary { background: var(--gold-soft); border-radius: 14px; padding: 0.9rem 1.1rem; }
+      .summary ul { margin: 0.4rem 0 0; }
+      .back { display: inline-block; margin-bottom: 1rem; font-weight: 600; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="back" href="./">&larr; Back to OinkCoin</a>
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated October 24, 2026</p>
+
+      <div class="summary">
+        <strong>The short version</strong>
+        <ul>
+          <li>OinkCoin can only <em>read</em> your bank data. It can never move money or make payments.</li>
+          <li>We never see your bank username or password. You log in to your bank through Plaid.</li>
+          <li>Your transactions and budget are stored on your device, not on our servers.</li>
+          <li>We don't sell your data or show ads.</li>
+          <li>You can disconnect your bank or delete your account at any time.</li>
+        </ul>
+      </div>
+
+      <h2>What we collect</h2>
+      <ul>
+        <li><strong>Account details:</strong> your email address and password. Passwords are handled by our
+          authentication provider and stored only in hashed form.</li>
+        <li><strong>Your permission choices:</strong> which bank permissions you agreed to and when.</li>
+        <li><strong>Bank data, if you connect a bank:</strong> account names, the last four digits of account
+          numbers, account types, current balances, and transactions (date, amount, merchant name and category).</li>
+        <li><strong>What you enter in the app:</strong> your buddy, budget, goals, and any expenses or CSV
+          statements you add.</li>
+      </ul>
+
+      <h2>How we use it</h2>
+      <p>Only to run OinkCoin: showing your balances, sorting spending into categories, tracking your budget,
+        powering your buddy's mood, and sending spending alerts if you turn them on. We don't use your data for
+        advertising and we don't sell or rent it to anyone.</p>
+
+      <h2>Connecting your bank with Plaid</h2>
+      <p>OinkCoin uses <a href="https://plaid.com" target="_blank" rel="noopener">Plaid</a> to connect to your
+        bank. When you connect, you log in to your bank inside Plaid's window, and Plaid shares your account and
+        transaction data with OinkCoin based on the permissions you chose. Plaid's handling of your data is
+        described in the <a href="https://plaid.com/legal/#end-user-privacy-policy" target="_blank" rel="noopener">Plaid
+        End User Privacy Policy</a>.</p>
+
+      <h2>Where your data is stored</h2>
+      <ul>
+        <li><strong>On your device:</strong> transactions, balances, budget, buddy and settings are saved in your
+          browser or the OinkCoin app.</li>
+        <li><strong>On our server:</strong> your account, your permission choices, and the connection key Plaid
+          gives us for each linked bank. Connection keys are encrypted and can't be read by the app. Transactions
+          pass through our server when you sync, but are not stored there.</li>
+      </ul>
+
+      <h2>Who we share it with</h2>
+      <p>We only share data with the services that make OinkCoin work:</p>
+      <ul>
+        <li><strong>Plaid</strong>, to connect to your bank.</li>
+        <li><strong>Supabase</strong>, which hosts our accounts, database and server code.</li>
+        <li><strong>GitHub Pages</strong>, which hosts the OinkCoin website.</li>
+      </ul>
+      <p>We may also disclose information if the law requires it.</p>
+
+      <h2>Your choices</h2>
+      <ul>
+        <li><strong>Change permissions:</strong> Profile &amp; Settings &rarr; Manage bank permissions.</li>
+        <li><strong>Disconnect your bank:</strong> Profile &amp; Settings &rarr; Disconnect bank. This revokes
+          OinkCoin's access through Plaid and deletes the connection key.</li>
+        <li><strong>Delete everything:</strong> Profile &amp; Settings &rarr; Reset everything. This deletes your
+          account, revokes bank access, and clears OinkCoin's data from that device.</li>
+      </ul>
+
+      <h2>Security</h2>
+      <p>Data travels over encrypted connections, bank connection keys are encrypted at rest, and only our
+        server code can use them. No system is perfectly secure, so please use a strong, unique password.</p>
+
+      <h2>Children</h2>
+      <p>OinkCoin is not intended for children under 13, and we don't knowingly collect their information.</p>
+
+      <h2>Changes</h2>
+      <p>If we change this policy, we'll update the date at the top. Significant changes will be shown in the app.</p>
+
+      <h2>Contact</h2>
+      <p>Questions or requests? <a href="https://github.com/denisseloyizz/TheVibeCoders-OinkCoin/issues" target="_blank" rel="noopener">Open an issue on GitHub</a>.</p>
+    </main>
+  </body>
+</html>

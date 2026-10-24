@@ -2,7 +2,7 @@ import './style.css';
 import { ITEM_BY_ID } from './accessories';
 import { currentUser, deleteLocalAccount, initAuth, renderAuth, renderConsent, SCOPES, signOut } from './auth';
 import { renderAvatar } from './avatar';
-import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, syncBank } from './bank';
+import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, isOAuthReturn, resumeBankLink, syncBank } from './bank';
 import { analyze, formatMoney, localDateKey, type Analysis } from './budget';
 import { applyAction, careMood, careNote, currentCare, type CareAction } from './care';
 import { ICONS, LINE, line } from './icons';
@@ -130,12 +130,12 @@ async function syncNow(quiet: boolean): Promise<void> {
   }
 }
 
-async function linkBank(): Promise<void> {
+async function linkBank(resume = false): Promise<void> {
   bankBusy = true;
   bankMsg = '';
   render();
   try {
-    if (await connectBank()) return await syncNow(false);
+    if (await (resume ? resumeBankLink() : connectBank())) return await syncNow(false);
   } catch (err) {
     bankMsg = errorText(err);
     showToast(`${LINE.close}<span>${esc(bankMsg)}</span>`);
@@ -609,4 +609,7 @@ function doAction(profile: Profile, action: CareAction): void {
   reactTimer = window.setTimeout(render, 2200);
 }
 
-initAuth(render).then(render);
+initAuth(render).then(() => {
+  render();
+  if (bankEnabled && isOAuthReturn() && currentUser()?.consent) void linkBank(true);
+});

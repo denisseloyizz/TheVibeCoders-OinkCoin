@@ -11,6 +11,7 @@ const ACCOUNT_KEY = 'oinkcoin-account-v1';
 const SESSION_KEY = 'oinkcoin-session-v1';
 const ITERATIONS = 150_000;
 const MIN_PASSWORD = 8;
+const PRIVACY_LINK = '<a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>';
 
 export type Scope = 'balances' | 'transactions' | 'sync' | 'alerts';
 
@@ -177,6 +178,7 @@ export function renderAuth(app: HTMLElement, done: () => void): void {
         ${signup ? 'Already have an account?' : 'New here?'}
         <button type="button" class="link" id="switch">${signup ? 'Log in' : 'Create an account'}</button>
       </p>
+      ${signup ? `<p class="auth-switch legal">By signing up you agree to our ${PRIVACY_LINK}.</p>` : ''}
     </main>`;
 
   app.querySelector('#switch')!.addEventListener('click', () => {
@@ -247,7 +249,7 @@ export function renderConsent(app: HTMLElement, current: User, done: () => void,
             <li>Sell or share your data</li>
           </ul>
         </div>
-        <p class="hint">You can change these permissions or disconnect any time in Profile &amp; Settings.</p>
+        <p class="hint">You can change these permissions or disconnect any time in Profile &amp; Settings. Read our ${PRIVACY_LINK}.</p>
         <label class="option agree">
           <input type="checkbox" name="agree" required ${current.consent ? 'checked' : ''} />
           <span>I agree to let OinkCoin access my bank account as described above.</span>

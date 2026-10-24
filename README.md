@@ -69,12 +69,17 @@ The easiest way is the dashboard: **Edge Functions > Secrets** in your Supabase 
 | `PLAID_CLIENT_ID` | From Plaid **Developers > Keys** |
 | `PLAID_SECRET` | The **Sandbox** secret from the same page |
 | `PLAID_ENV` | `sandbox` |
+| `PLAID_TOKEN_KEY` | Encryption key for stored bank tokens (see below) |
 
 Or from the terminal, with the values in quotes:
 
 ```sh
 npx supabase secrets set PLAID_CLIENT_ID="..." PLAID_SECRET="..." PLAID_ENV=sandbox
+npx supabase secrets set "PLAID_TOKEN_KEY=$(openssl rand -base64 32)"
 ```
+
+`PLAID_TOKEN_KEY` encrypts each bank's access token before it's saved. Set it once and don't change it:
+a new key means every user has to reconnect their bank.
 
 The function picks up new secrets without redeploying.
 
@@ -99,11 +104,21 @@ Sign up, confirm your email, agree to the permissions, and connect a bank. In Sa
 
 In Sandbox, errors show Plaid's error code. Full details are in Supabase **Edge Functions > bank > Logs**.
 
-## Going live
+## Going live with real banks
 
-- Request Production access in the Plaid dashboard, then set `PLAID_ENV=production` and the Production secret.
-- Banks that use OAuth in the iOS app need a `redirect_uri` registered with Plaid.
-- Budget, buddy and expenses are stored per user on each device; they don't sync between devices yet.
+1. In the Plaid dashboard, request Production access. You'll need the privacy policy URL:
+   `https://denisseloyizz.github.io/TheVibeCoders-OinkCoin/privacy.html` (source: `public/privacy.html`).
+2. Once approved, set `PLAID_ENV=production` and `PLAID_SECRET` to the Production secret.
+3. For banks that log in on their own site (OAuth: Chase, Wells Fargo, Capital One...):
+   - In Plaid **Developers > API > Allowed redirect URIs**, add
+     `https://denisseloyizz.github.io/TheVibeCoders-OinkCoin/`.
+   - Set the `PLAID_REDIRECT_URIS` secret to the same URL (comma-separate several).
+   - Complete Plaid's OAuth registration for those banks in the dashboard.
+
+   Without `PLAID_REDIRECT_URIS`, OAuth banks still work on desktop through Plaid's pop-up window.
+   The iOS app needs a universal link for OAuth, which isn't set up yet.
+
+Budget, buddy and expenses are stored per user on each device; they don't sync between devices yet.
 
 ## Deploy
 

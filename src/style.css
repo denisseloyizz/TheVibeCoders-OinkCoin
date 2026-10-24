@@ -482,3 +482,5 @@ button.link:hover { background: none; text-decoration: underline; }
 .bank-accounts small { display: block; color: var(--muted); text-transform: capitalize; }
 .bank-accounts span { font-weight: 650; }
 .settings .import-msg { margin-bottom: 0.75rem; }
+.auth-switch.legal { font-size: 0.8rem; margin-top: 0.75rem; }
+.auth a, .consent a { color: var(--pink-deep); }
