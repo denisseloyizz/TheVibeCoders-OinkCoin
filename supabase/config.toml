@@ -1,0 +1,4 @@
+project_id = "oinkcoin"
+
+[functions.bank]
+verify_jwt = true
