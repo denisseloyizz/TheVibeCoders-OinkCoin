@@ -18,9 +18,16 @@ interface Draft {
   goal: Goal;
 }
 
-const STEPS = ['Buddy', 'Budget', 'Statement', 'Goals'];
+const STEPS = ['Buddy', 'Budget', 'Spending', 'Goals'];
 const FOCUSABLE: Category[] = CATEGORIES.filter((c) => c !== 'Bills');
 let draft: Draft | null = null;
+
+/** Bank linking, supplied by the app when a backend is configured. */
+export interface BankOption {
+  link: () => void;
+  busy: boolean;
+  message: string;
+}
 
 function newDraft(state: AppState): Draft {
   const p = state.profile;
@@ -35,6 +42,44 @@ function newDraft(state: AppState): Draft {
     focus: p?.focus ?? [],
     goal: p?.goal ?? 'Save more money',
   };
+}
+
+function spendingStep(d: Draft, state: AppState, bank: BankOption | null): string {
+  const linked = state.bank;
+  const done = linked || d.imported.length > 0;
+  return `
+        <h2>How should ${esc(d.name || 'your buddy')} see your spending?</h2>
+        <p class="hint">Pick one. You can always add more later.</p>
+        ${
+          linked
+            ? `<p class="import-msg" role="status">Bank connected: ${esc(linked.accounts.map((a) => a.name + (a.mask ? ` ··${a.mask}` : '')).join(', ') || 'your accounts')}.</p>`
+            : ''
+        }
+        <div class="sources">
+          ${
+            bank && !linked
+              ? `<button type="button" class="source" id="link-bank" ${bank.busy ? 'disabled' : ''}>
+                  <strong>${bank.busy ? 'Connecting...' : 'Link your bank'}</strong>
+                  <small>Imports transactions automatically and keeps them up to date. Read-only: OinkCoin can never move money.</small>
+                </button>`
+              : ''
+          }
+          <label class="source">
+            <input type="file" id="statement" accept=".csv,text/csv" />
+            <strong>${d.imported.length ? 'Upload another statement' : 'Upload a bank statement'}</strong>
+            <small>A CSV file from your bank (for example Bank of America: Activity &gt; Download &gt; Microsoft Excel). Stays private.</small>
+          </label>
+          ${
+            done
+              ? ''
+              : `<button type="button" class="source" id="use-cash">
+                  <strong>Skip, I use cash</strong>
+                  <small>Add expenses by hand as you spend.</small>
+                </button>`
+          }
+        </div>
+        ${bank?.message ? `<p class="import-msg" role="status">${esc(bank.message)}</p>` : ''}
+        ${d.importMsg ? `<p class="import-msg${d.importError ? ' error' : ''}" role="status">${esc(d.importMsg)}</p>` : ''}`;
 }
 
 function stepBody(d: Draft): string {
@@ -62,16 +107,6 @@ function stepBody(d: Draft): string {
         <div class="chips">
           ${[1000, 2000, 3000, 5000].map((v) => `<button type="button" class="chip" data-budget="${v}">$${v.toLocaleString()}</button>`).join('')}
         </div>`;
-    case 2:
-      return `
-        <h2>Add a bank statement</h2>
-        <p class="hint">Upload a CSV from your bank (for example in Bank of America: Activity &gt; Download &gt; Microsoft Excel). We'll sort your spending into categories. Your file stays on this device.</p>
-        <label class="dropzone">
-          <input type="file" id="statement" accept=".csv,text/csv" />
-          <strong>${d.imported.length ? 'Choose another file' : 'Choose CSV file'}</strong>
-          <small>Optional - you can skip this</small>
-        </label>
-        ${d.importMsg ? `<p class="import-msg${d.importError ? ' error' : ''}" role="status">${esc(d.importMsg)}</p>` : ''}`;
     default:
       return `
         <h2>Set your goals</h2>
@@ -102,10 +137,17 @@ function topCategory(expenses: Expense[]): { category: Category; total: number }
   return best ? { category: best[0], total: best[1] } : null;
 }
 
-export function renderOnboarding(app: HTMLElement, state: AppState, done: () => void, cancel: (() => void) | null): void {
+export function renderOnboarding(
+  app: HTMLElement,
+  state: AppState,
+  done: () => void,
+  cancel: (() => void) | null,
+  bank: BankOption | null = null,
+): void {
   draft ??= newDraft(state);
   const d = draft;
-  const rerender = () => renderOnboarding(app, state, done, cancel);
+  const rerender = () => renderOnboarding(app, state, done, cancel, bank);
+  const spendingDone = !!state.bank || d.imported.length > 0;
 
   app.innerHTML = `
     <main class="onboard card">
@@ -117,10 +159,10 @@ export function renderOnboarding(app: HTMLElement, state: AppState, done: () => 
         ${STEPS.map((s, i) => `<li class="${i < d.step ? 'done' : ''}${i === d.step ? ' current' : ''}"><span>${i + 1}</span>${s}</li>`).join('')}
       </ol>
       <form id="step-form">
-        ${stepBody(d)}
+        ${d.step === 2 ? spendingStep(d, state, bank) : stepBody(d)}
         <div class="actions">
           ${d.step > 0 ? '<button type="button" class="secondary" id="back">Back</button>' : ''}
-          <button type="submit">${d.step === STEPS.length - 1 ? "Let's go!" : d.step === 2 && !d.imported.length ? 'Skip' : 'Next'}</button>
+          ${d.step === 2 && !spendingDone ? '' : `<button type="submit">${d.step === STEPS.length - 1 ? "Let's go!" : 'Next'}</button>`}
         </div>
       </form>
     </main>`;
@@ -131,6 +173,8 @@ export function renderOnboarding(app: HTMLElement, state: AppState, done: () => 
     draft = null;
     cancel?.();
   });
+  app.querySelector('#link-bank')?.addEventListener('click', () => bank?.link());
+  app.querySelector('#use-cash')?.addEventListener('click', () => form.requestSubmit());
   app.querySelector('#back')?.addEventListener('click', () => {
     d.step--;
     rerender();
@@ -166,7 +210,7 @@ export function renderOnboarding(app: HTMLElement, state: AppState, done: () => 
     } else if (d.step === 1) {
       d.budget = Math.max(1, Number(data.get('budget')) || 1);
     } else if (d.step === 2) {
-      const top = topCategory(d.imported);
+      const top = topCategory([...d.imported, ...state.expenses]);
       if (top && d.focus.length === 0) d.focus = [top.category];
     } else {
       d.focus = data.getAll('focus').map(String).filter((c): c is Category => FOCUSABLE.includes(c as Category));

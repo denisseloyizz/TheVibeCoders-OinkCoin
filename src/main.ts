@@ -237,7 +237,8 @@ function render(): void {
       () => {
         managingConsent = false;
         autoSynced = true;
-        if (firstTime && bankEnabled && !state.bank) void linkBank();
+        // New accounts choose how to add spending during setup; returning users go straight to their bank.
+        if (firstTime && bankEnabled && !state.bank && state.profile) void linkBank();
         else render();
       },
       user.consent
@@ -264,6 +265,7 @@ function render(): void {
             render();
           }
         : null,
+      bankEnabled ? { link: () => void linkBank(), busy: bankBusy, message: bankMsg } : null,
     );
     return;
   }
