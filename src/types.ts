@@ -66,4 +66,6 @@ export interface AppState {
   owned: string[];
   equipped: Equipped;
   bank: Bank | null;
+  /** When this state was last saved (ms), used to pick the newer copy between device and account. */
+  savedAt: number;
 }

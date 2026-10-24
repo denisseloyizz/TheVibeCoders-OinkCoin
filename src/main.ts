@@ -15,6 +15,7 @@ import {
   twoFactorOn,
 } from './auth';
 import { renderAvatar } from './avatar';
+import { cancelCloudSave, cloudEnabled, flushCloudSave, loadCloudState, queueCloudSave } from './cloud';
 import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, isOAuthReturn, resumeBankLink, syncBank } from './bank';
 import { analyze, formatMoney, localDateKey, pastMessage, type Analysis } from './budget';
 import { applyAction, careMood, careNote, currentCare, type CareAction } from './care';
@@ -25,7 +26,7 @@ import { renderOnboarding } from './onboarding';
 import { renderArc, renderCategoryDetail, renderCategoryList } from './ring';
 import { COINS_PER_GOAL, findNewAwards } from './rewards';
 import { mergeExpenses, readStatementFile } from './statement';
-import { clearState, emptyState, loadState, saveState } from './storage';
+import { clearState, emptyState, loadState, saveLocalOnly, saveState, setSaveListener } from './storage';
 import { renderStore } from './store';
 import { CATEGORIES, type Care, type Category, type Expense, type Mood, type Profile } from './types';
 import { esc } from './util';
@@ -42,6 +43,7 @@ const alerted = new Set<string>();
 let editing = false;
 let managingConsent = false;
 let settingUpTwoFactor = false;
+let cloudLoading = false;
 let accountMsg = '';
 let view: View = 'buddy';
 let viewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -160,6 +162,31 @@ async function linkBank(resume = false): Promise<void> {
   render();
 }
 
+/** Picks the newer of this device's copy and the account's copy. */
+async function pullFromCloud(): Promise<void> {
+  try {
+    const cloud = await loadCloudState();
+    if (cloud?.profile && (!state.profile || cloud.savedAt > state.savedAt)) {
+      Object.assign(state, cloud);
+      saveLocalOnly(state);
+    } else if (state.profile) {
+      queueCloudSave(state);
+    }
+  } catch (err) {
+    // Offline or the table isn't set up: keep using this device's copy.
+    console.warn('Could not load from your account:', err);
+  }
+  cloudLoading = false;
+  render();
+}
+
+async function logOut(): Promise<void> {
+  await flushCloudSave();
+  accountMsg = '';
+  stateOwner = ''; // re-check the account on the next login, in case another device changed things
+  await signOut();
+}
+
 function render(): void {
   const user = currentUser();
   if (!user) {
@@ -186,6 +213,14 @@ function render(): void {
     bankMsg = '';
     view = 'buddy';
     alerted.clear();
+    if (cloudEnabled) {
+      cloudLoading = true;
+      void pullFromCloud();
+    }
+  }
+  if (cloudLoading) {
+    app.innerHTML = `<main class="onboard card auth"><div class="onboard-head">${brand()}</div><p class="hint">Loading your buddy...</p></main>`;
+    return;
   }
   if (!user.consent || managingConsent) {
     const firstTime = !user.consent;
@@ -447,7 +482,11 @@ function settingsHtml(profile: Profile): string {
       <button id="permissions" class="secondary">Manage bank permissions</button>
       <button id="logout" class="secondary">Log out</button>
       <button id="logout-clear" class="secondary">Log out &amp; clear this device</button>
-      <p class="hint small-print">Your buddy, coins and transactions are saved on this device. Clearing removes them here; bank transactions can be synced again, but everything else is gone for good.</p>
+      <p class="hint small-print">${
+        cloudEnabled
+          ? 'Your buddy, coins and transactions are backed up to your account. Clearing only removes the copy on this device.'
+          : 'Your buddy, coins and transactions are saved on this device only. Clearing removes them for good.'
+      }</p>
     </section>
 
     ${bankHtml()}
@@ -560,12 +599,15 @@ function renderDashboard(profile: Profile): void {
     render();
   });
   app.querySelector('#logout')?.addEventListener('click', async () => {
-    accountMsg = '';
-    await signOut();
+    await logOut();
     render();
   });
   app.querySelector('#logout-clear')?.addEventListener('click', async () => {
-    if (!confirm('Log out and remove your buddy, coins and transactions from this device? This cannot be undone.')) return;
+    const warning = cloudEnabled
+      ? 'Log out and remove your data from this device? It stays backed up to your account.'
+      : 'Log out and remove your buddy, coins and transactions from this device? This cannot be undone.';
+    if (!confirm(warning)) return;
+    await flushCloudSave();
     clearState();
     Object.assign(state, emptyState());
     stateOwner = '';
@@ -618,6 +660,7 @@ function renderDashboard(profile: Profile): void {
         return;
       }
     }
+    cancelCloudSave();
     clearState();
     Object.assign(state, emptyState());
     stateOwner = '';
@@ -746,6 +789,13 @@ function doAction(profile: Profile, action: CareAction): void {
 
   clearTimeout(reactTimer);
   reactTimer = window.setTimeout(render, 2200);
+}
+
+if (cloudEnabled) {
+  setSaveListener(queueCloudSave);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushCloudSave();
+  });
 }
 
 initAuth(render).then(() => {
