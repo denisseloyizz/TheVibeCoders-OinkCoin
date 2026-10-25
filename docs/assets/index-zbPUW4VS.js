@@ -94,7 +94,7 @@ ${b}`}class U extends Error{constructor({message:e,code:r,cause:s,name:n}){var i
         <div class="actions"><button type="submit">Send reset link</button></div>
       </form>
       <p class="auth-switch"><button type="button" class="link" id="back-login">Back to log in</button></p>
-    </main>`,t.querySelector("#back-login").addEventListener("click",()=>{ke="login",ce="",r()});const s=t.querySelector("#forgot-form");s.addEventListener("submit",async n=>{if(n.preventDefault(),$e=ji(String(new FormData(s).get("email"))),Ke=!0,!Ni($e))return ce="Enter a valid email address.",r();s.querySelector('button[type="submit"]').disabled=!0;const{error:i}=await x.auth.resetPasswordForEmail($e,{redirectTo:Di()});ce=(i==null?void 0:i.status)===429?"Too many emails sent. Wait a few minutes and try again.":"If there's an account for that email, a reset link is on its way. Check your spam folder too.",Ke=(i==null?void 0:i.status)===429,r()})}function lu(t,e){if(!G)return It=!1,ke="forgot",ce="That reset link has expired. Request a new one.",Ke=!0,Br(t,e);t.innerHTML=`
+    </main>`,t.querySelector("#back-login").addEventListener("click",()=>{ke="login",ce="",r()});const s=t.querySelector("#forgot-form");s.addEventListener("submit",async n=>{if(n.preventDefault(),$e=ji(String(new FormData(s).get("email"))),Ke=!0,!Ni($e))return ce="Enter a valid email address.",r();s.querySelector('button[type="submit"]').disabled=!0;const{error:i}=await x.auth.resetPasswordForEmail($e,{redirectTo:Di()});ce=i?i.status===429?"Too many emails sent. Wait a few minutes and try again.":`Could not send the reset email: ${i.message}`:"If there's an account for that email, a reset link is on its way. Check your spam folder too.",Ke=!!i,r()})}function lu(t,e){if(!G)return It=!1,ke="forgot",ce="That reset link has expired. Request a new one.",Ke=!0,Br(t,e);t.innerHTML=`
     <main class="onboard card auth">
       <div class="onboard-head">${te()}</div>
       <h2>Choose a new password</h2>
@@ -124,7 +124,7 @@ ${b}`}class U extends Error{constructor({message:e,code:r,cause:s,name:n}){var i
         ${s?`<label class="field">Confirm password
                 <input name="confirm" type="password" autocomplete="new-password" required minlength="${xe}" />
               </label>`:""}
-        ${!s&&x?'<p class="forgot"><button type="button" class="link" id="forgot">Forgot password?</button></p>':""}
+        ${x?'<p class="forgot"><button type="button" class="link" id="forgot">Forgot password?</button></p>':""}
         ${Ui()}
         ${Xe&&x?'<p class="forgot"><button type="button" class="link" id="resend">Resend confirmation email</button></p>':""}
         <div class="actions"><button type="submit">${s?"Sign up":"Log in"}</button></div>

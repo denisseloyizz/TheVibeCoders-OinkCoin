@@ -345,8 +345,12 @@ function renderForgot(app: HTMLElement, done: () => void): void {
     form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = true;
     const { error } = await supabase!.auth.resetPasswordForEmail(lastEmail, { redirectTo: pageUrl() });
     // Same answer whether or not the account exists, so the form can't be used to look up emails.
-    authMsg = error?.status === 429 ? 'Too many emails sent. Wait a few minutes and try again.' : "If there's an account for that email, a reset link is on its way. Check your spam folder too.";
-    authError = error?.status === 429;
+    authMsg = error
+      ? error.status === 429
+        ? 'Too many emails sent. Wait a few minutes and try again.'
+        : `Could not send the reset email: ${error.message}`
+      : "If there's an account for that email, a reset link is on its way. Check your spam folder too.";
+    authError = !!error;
     rerender();
   });
 }
@@ -425,7 +429,7 @@ export function renderAuth(app: HTMLElement, done: () => void): void {
               </label>`
             : ''
         }
-        ${!signup && supabase ? '<p class="forgot"><button type="button" class="link" id="forgot">Forgot password?</button></p>' : ''}
+        ${supabase ? '<p class="forgot"><button type="button" class="link" id="forgot">Forgot password?</button></p>' : ''}
         ${messageHtml()}
         ${canResend && supabase ? '<p class="forgot"><button type="button" class="link" id="resend">Resend confirmation email</button></p>' : ''}
         <div class="actions"><button type="submit">${signup ? 'Sign up' : 'Log in'}</button></div>
