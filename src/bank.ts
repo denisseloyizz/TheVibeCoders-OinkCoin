@@ -1,7 +1,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { categorize } from './statement';
 import { supabase } from './supabase';
-import type { BankAccount, Category, Expense } from './types';
+import type { BankAccount, Category, Expense, Income } from './types';
 
 // Bank linking goes through Plaid. The Plaid secret and access tokens stay in the
 // `bank` Supabase function; the app only ever sees short-lived link tokens.
@@ -41,6 +41,7 @@ export interface SyncResult {
   ready: boolean;
   accounts: BankAccount[];
   expenses: Expense[];
+  income: Income[];
 }
 
 async function call<T>(action: string, body: Record<string, unknown> = {}): Promise<T> {
@@ -153,6 +154,12 @@ function toExpense(t: RawTransaction): Expense | null {
   return { id: `plaid:${t.id}`, amount: Math.round(t.amount * 100) / 100, category, note: t.name.slice(0, 60), date: t.date };
 }
 
+/** Money in that Plaid labels as income (paychecks, interest...). Transfers between your own accounts don't count. */
+function toIncome(t: RawTransaction): Income | null {
+  if (t.pending || t.amount >= 0 || t.primary !== 'INCOME') return null;
+  return { id: `plaid:${t.id}`, amount: Math.round(-t.amount * 100) / 100, note: t.name.slice(0, 60), date: t.date };
+}
+
 export async function syncBank(): Promise<SyncResult> {
   const r = await call<{ linked: boolean; ready: boolean; accounts: BankAccount[]; transactions: RawTransaction[] }>('sync');
   return {
@@ -160,6 +167,7 @@ export async function syncBank(): Promise<SyncResult> {
     ready: r.ready,
     accounts: r.accounts,
     expenses: r.transactions.map(toExpense).filter((e): e is Expense => e !== null),
+    income: r.transactions.map(toIncome).filter((i): i is Income => i !== null),
   };
 }
 

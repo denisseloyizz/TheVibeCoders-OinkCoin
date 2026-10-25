@@ -1,4 +1,4 @@
-import type { Category, Expense } from './types';
+import type { Category, Expense, Income } from './types';
 
 export const MAX_STATEMENT_BYTES = 5 * 1024 * 1024;
 
@@ -14,6 +14,14 @@ const RULES: [Category, RegExp][] = [
 ];
 
 const SKIP = /payroll|direct dep|deposit|transfer|payment.*thank|online payment|zelle from|refund/i;
+// Money in that counts as income. Transfers between your own accounts and refunds don't.
+const INCOME = /payroll|direct dep|salary|paycheck|deposit|zelle from|venmo|cash app|interest paid|dividend/i;
+const NOT_INCOME = /transfer|refund|reversal|payment.*thank/i;
+
+export interface Statement {
+  expenses: Expense[];
+  income: Income[];
+}
 
 export function categorize(description: string): Category {
   return RULES.find(([, re]) => re.test(description))?.[0] ?? 'Other';
@@ -73,7 +81,7 @@ function parseAmount(raw: string): number | null {
   return negative ? -n : n;
 }
 
-export function parseStatement(text: string): Expense[] {
+export function parseStatement(text: string): Statement {
   const rows = parseCsv(text);
   const headerIdx = rows.findIndex(
     (r) => r.some((c) => /date/i.test(c)) && r.some((c) => /amount|debit|withdrawal/i.test(c)),
@@ -85,6 +93,7 @@ export function parseStatement(text: string): Expense[] {
   const dateCol = col(/date/);
   const descCol = col(/description|payee|merchant|name|memo|details/);
   const debitCol = col(/debit|withdrawal/);
+  const creditCol = col(/credit|deposit/);
   const amountCol = col(/amount/);
 
   const data = rows.slice(headerIdx + 1);
@@ -93,18 +102,29 @@ export function parseStatement(text: string): Expense[] {
   const negativesAreSpending = amounts.some((a) => a !== null && a < 0);
 
   const expenses: Expense[] = [];
+  const income: Income[] = [];
   data.forEach((r, i) => {
     const date = parseDate(r[dateCol] ?? '');
     const description = (descCol >= 0 ? r[descCol] : '').trim();
-    if (!date || SKIP.test(description)) return;
+    if (!date) return;
+
+    // Money in: a credit column, or a positive amount when spending is negative.
+    const a = amounts[i];
+    const received = creditCol >= 0 && creditCol !== debitCol ? parseAmount(r[creditCol] ?? '') : negativesAreSpending && a !== null && a > 0 ? a : null;
+    if (received && received > 0) {
+      if (INCOME.test(description) && !NOT_INCOME.test(description)) {
+        income.push({ id: crypto.randomUUID(), amount: Math.round(received * 100) / 100, note: description.slice(0, 60), date });
+      }
+      return;
+    }
+    if (SKIP.test(description)) return;
 
     let spend: number | null = null;
     if (debitCol >= 0) {
       const d = parseAmount(r[debitCol] ?? '');
       spend = d ? Math.abs(d) : null;
-    } else {
-      const a = amounts[i];
-      if (a !== null) spend = negativesAreSpending ? (a < 0 ? -a : null) : a;
+    } else if (a !== null) {
+      spend = negativesAreSpending ? (a < 0 ? -a : null) : a;
     }
     if (!spend || spend <= 0) return;
 
@@ -117,8 +137,14 @@ export function parseStatement(text: string): Expense[] {
     });
   });
 
-  if (expenses.length === 0) throw new Error('No spending transactions found in this file.');
-  return expenses;
+  if (expenses.length === 0 && income.length === 0) throw new Error('No transactions found in this file.');
+  return { expenses, income };
+}
+
+export function mergeIncome(existing: Income[], incoming: Income[]): Income[] {
+  const key = (i: Income) => `${i.date}|${i.amount}|${i.note}`;
+  const seen = new Set(existing.map(key));
+  return [...existing, ...incoming.filter((i) => !seen.has(key(i)))];
 }
 
 export function mergeExpenses(existing: Expense[], incoming: Expense[]): Expense[] {
@@ -127,7 +153,7 @@ export function mergeExpenses(existing: Expense[], incoming: Expense[]): Expense
   return [...existing, ...incoming.filter((e) => !seen.has(key(e)))];
 }
 
-export function readStatementFile(file: File): Promise<Expense[]> {
+export function readStatementFile(file: File): Promise<Statement> {
   if (file.size > MAX_STATEMENT_BYTES) return Promise.reject(new Error('File is too large (max 5 MB).'));
   return file.text().then(parseStatement);
 }

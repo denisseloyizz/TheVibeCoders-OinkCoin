@@ -2,6 +2,13 @@
 
 A budget tracker with a virtual buddy (male, female, non-binary, or pig) whose mood depends on how you spend.
 
+## Copyright and usage
+
+Copyright © 2026 TheVibeCoders. All rights reserved. Unless otherwise noted, the original source code,
+design, artwork, and documentation in this repository are owned by TheVibeCoders. No license is granted
+to copy, modify, distribute, or use these materials without prior written permission. Third-party
+components remain subject to their respective licenses; see their package and license notices.
+
 ```sh
 npm install
 npm run dev
@@ -118,7 +125,8 @@ In Sandbox, errors show Plaid's error code. Full details are in Supabase **Edge 
    Without `PLAID_REDIRECT_URIS`, OAuth banks still work on desktop through Plaid's pop-up window.
    The iOS app needs a universal link for OAuth, which isn't set up yet.
 
-Budget, buddy and expenses are stored per user on each device; they don't sync between devices yet.
+Each user's buddy, budget, coins and transactions are backed up to the `app_state` table (only the owner
+can read it, and two-factor is enforced when enabled), so they follow the account across devices.
 
 ## Deploy
 

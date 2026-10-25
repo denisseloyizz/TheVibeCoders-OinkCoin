@@ -1,24 +1,58 @@
 import './style.css';
 import { ITEM_BY_ID } from './accessories';
-import { currentUser, deleteLocalAccount, initAuth, renderAuth, renderConsent, SCOPES, signOut } from './auth';
+import {
+  currentUser,
+  deleteLocalAccount,
+  disableTwoFactor,
+  initAuth,
+  needsNewPassword,
+  needsTwoFactor,
+  renderAuth,
+  renderConsent,
+  renderNewPassword,
+  renderTwoFactorChallenge,
+  renderTwoFactorSetup,
+  SCOPES,
+  signOut,
+  twoFactorOn,
+} from './auth';
 import { renderAvatar } from './avatar';
+import { cancelCloudSave, cloudEnabled, flushCloudSave, loadCloudState, queueCloudSave } from './cloud';
 import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, isOAuthReturn, resumeBankLink, syncBank } from './bank';
-import { analyze, formatMoney, localDateKey, pastMessage, type Analysis } from './budget';
+import { analyze, formatMoney, localDateKey, pastMessage, petName, type Analysis } from './budget';
 import { applyAction, careMood, careNote, currentCare, type CareAction } from './care';
 import { buddyPhrase, moneyTier, reply, SUGGESTIONS, type ChatContext, type ChatMessage } from './chat';
+import { friendsHtml, myHouseHtml, visitHtml } from './friends';
+import { renderGoals } from './goals';
+import { HOUSE_ITEM_BY_ID } from './house';
 import { ICONS, LINE, line } from './icons';
 import { renderLearn } from './learn';
 import { brand } from './logo';
 import { renderOnboarding } from './onboarding';
 import { renderArc, renderCategoryDetail, renderCategoryList } from './ring';
 import { COINS_PER_GOAL, findNewAwards } from './rewards';
-import { mergeExpenses, readStatementFile } from './statement';
-import { clearState, emptyState, loadState, saveState } from './storage';
+import { mergeExpenses, mergeIncome, readStatementFile } from './statement';
+import { clearState, emptyState, loadState, saveLocalOnly, saveState, setSaveListener } from './storage';
+import {
+  acceptFriend,
+  collectCheers,
+  loadFriends,
+  publishBuddy,
+  removeFriend,
+  resetSocial,
+  sendCheer,
+  sendFriendRequest,
+  setDisplayName,
+  socialEnabled,
+  type BuddyCard,
+  type FriendsData,
+} from './social';
 import { renderStore } from './store';
-import { CATEGORIES, type Care, type Category, type Expense, type Mood, type Profile } from './types';
+import { tutorialHtml, tutorialLength } from './tutorial';
+import { CATEGORIES, type Care, type Category, type Expense, type Income, type Mood, type NoticeKind, type Profile } from './types';
 import { esc } from './util';
 
-type View = 'buddy' | 'chat' | 'history' | 'report' | 'store' | 'settings' | 'learn';
+type View = 'buddy' | 'chat' | 'history' | 'friends' | 'notifications' | 'report' | 'store' | 'settings' | 'learn';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const state = emptyState();
@@ -26,9 +60,20 @@ let stateOwner = '';
 let autoSynced = false;
 let bankBusy = false;
 let bankMsg = '';
-const alerted = new Set<string>();
 let editing = false;
 let managingConsent = false;
+let settingUpTwoFactor = false;
+let cloudLoading = false;
+let goalsOpen = false;
+let categoriesOpen = false;
+let cashOpen = false;
+let friendsData: FriendsData | null = null;
+let friendsLoading = false;
+let friendsFailed = false;
+let friendsMsg = '';
+let visiting: string | null = null;
+let cheersChecked = false;
+let accountMsg = '';
 let view: View = 'buddy';
 let viewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedCat: Category | null = null;
@@ -39,6 +84,7 @@ let bubbleKey = '';
 let bubbleText = '';
 let chatLog: ChatMessage[] = [];
 const CHAT_LIMIT = 30;
+let tutorialStep = 0;
 
 const MOOD_LABEL: Record<Mood, string> = { happy: 'Happy', okay: 'Okay', sad: 'Sad', angry: 'Angry', dead: 'Fainted' };
 
@@ -48,6 +94,11 @@ const MENU: { view: View; label: string; icon: string }[] = [
   { view: 'buddy', label: 'Budget Buddy', icon: LINE.pet },
   { view: 'chat', label: 'Chat with Oink', icon: CHAT_ICON },
   { view: 'history', label: 'Pet History', icon: line('<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>') },
+  {
+    view: 'friends',
+    label: 'Friends & House',
+    icon: line('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 3-5.5 6.5-5.5s6.5 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.6c2.2.6 3.5 2.4 3.5 5.4"/>'),
+  },
   { view: 'report', label: 'Full Report', icon: line('<path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/>') },
   { view: 'store', label: 'Store', icon: line('<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>') },
   { view: 'learn', label: 'Grow Your Money', icon: line('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>') },
@@ -71,7 +122,19 @@ const CARE_BUTTONS: { action: CareAction; stat: 'hunger' | 'fun' | 'love'; label
 const STAT_NAME = { hunger: 'Hunger', fun: 'Fun', love: 'Love' };
 const careLabel = (b: (typeof CARE_BUTTONS)[number], value: number) => `${b.label} (${STAT_NAME[b.stat]} ${value}%)`;
 
+const toastQueue: string[] = [];
+let toastShowing = false;
+
+/** Pop-ups wait in line and show one at a time. */
 function showToast(html: string): void {
+  toastQueue.push(html);
+  if (!toastShowing) nextToast();
+}
+
+function nextToast(): void {
+  const html = toastQueue.shift();
+  toastShowing = html !== undefined;
+  if (html === undefined) return;
   const toast = document.createElement('div');
   toast.className = 'toast';
   toast.setAttribute('role', 'status');
@@ -80,8 +143,26 @@ function showToast(html: string): void {
   requestAnimationFrame(() => toast.classList.add('show'));
   setTimeout(() => {
     toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 400);
+    setTimeout(() => {
+      toast.remove();
+      nextToast();
+    }, 400);
   }, 3200);
+}
+
+const NOTICE_ICON: Record<NoticeKind, string> = {
+  coins: ICONS.coin,
+  alert: LINE.bulb,
+  cheer: ICONS.heart,
+  bank: ICONS.coin,
+  error: LINE.close,
+};
+
+/** Adds to the notifications list (kept with the account) and shows it as a pop-up. */
+function notify(kind: NoticeKind, text: string): void {
+  state.notices = [{ id: crypto.randomUUID(), kind, text, at: Date.now(), read: false }, ...state.notices].slice(0, 40);
+  saveState(state);
+  showToast(`${NOTICE_ICON[kind]}<span>${esc(text)}</span>`);
 }
 
 function collectRewards(): void {
@@ -89,9 +170,8 @@ function collectRewards(): void {
   if (awards.length === 0) return;
   state.coins += awards.length * COINS_PER_GOAL;
   state.rewards.push(...awards.map((a) => a.key));
-  saveState(state);
-  const what = awards.length === 1 ? esc(awards[0].label) : `${awards.length} goals`;
-  showToast(`${ICONS.coin}<span>Goal met: ${what} &middot; <b>+${awards.length * COINS_PER_GOAL} coins</b></span>`);
+  const what = awards.length === 1 ? awards[0].label : `${awards.length} goals`;
+  notify('coins', `Goal met: ${what} · +${awards.length * COINS_PER_GOAL} coins`);
 }
 
 function persist(): void {
@@ -102,16 +182,17 @@ function persist(): void {
 const DAY = 24 * 60 * 60 * 1000;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : 'Something went wrong. Try again.');
 
+/** Spending alerts (an optional bank permission): one pop-up listing categories that newly passed 90% this month. */
 function checkAlerts(): void {
   if (!state.profile || !currentUser()?.consent?.scopes.includes('alerts')) return;
   const now = analyze(state.profile, state.expenses);
-  for (const c of now.categories) {
-    const key = `${now.monthKey}:${c.category}`;
-    if (c.limit <= 0 || c.ratio < 0.9 || alerted.has(key)) continue;
-    alerted.add(key);
-    const pct = Math.round(c.ratio * 100);
-    showToast(`${LINE.bulb}<span>Heads up: you've used <b>${pct}%</b> of your ${esc(c.category)} budget.</span>`);
-  }
+  const fresh = now.categories.filter((c) => c.limit > 0 && c.ratio >= 0.9 && !state.alerts.includes(`${now.monthKey}:${c.category}`));
+  if (fresh.length === 0) return;
+  // Remember them with the account (older months dropped) so they don't pop up again on every open.
+  state.alerts = [...state.alerts.filter((k) => k.startsWith(now.monthKey)), ...fresh.map((c) => `${now.monthKey}:${c.category}`)];
+  const list = fresh.map((c) => `${c.category} ${Math.round(c.ratio * 100)}%`);
+  const joined = list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+  notify('alert', `Spending alert: ${joined} of this month's limit${fresh.length === 1 ? '' : 's'}.`);
 }
 
 async function syncNow(quiet: boolean): Promise<void> {
@@ -122,6 +203,7 @@ async function syncNow(quiet: boolean): Promise<void> {
     const r = await syncBank();
     const before = state.expenses.length;
     state.expenses = mergeExpenses(state.expenses, r.expenses);
+    state.income = mergeIncome(state.income, r.income);
     state.bank = r.linked ? { accounts: r.accounts, syncedAt: Date.now() } : null;
     saveState(state);
     added = state.expenses.length - before;
@@ -130,7 +212,7 @@ async function syncNow(quiet: boolean): Promise<void> {
       : r.ready
         ? `Synced ${added} new transaction${added === 1 ? '' : 's'}.`
         : 'Your bank is still preparing your transactions. Try syncing again in a minute.';
-    if (bankMsg && (!quiet || added)) showToast(`${ICONS.coin}<span>${esc(bankMsg)}</span>`);
+    if (bankMsg && (!quiet || added)) notify('bank', bankMsg);
     checkAlerts();
   } catch (err) {
     if (!quiet) bankMsg = errorText(err);
@@ -148,16 +230,100 @@ async function linkBank(resume = false): Promise<void> {
     if (await (resume ? resumeBankLink() : connectBank())) return await syncNow(false);
   } catch (err) {
     bankMsg = errorText(err);
-    showToast(`${LINE.close}<span>${esc(bankMsg)}</span>`);
+    notify('error', bankMsg);
   }
   bankBusy = false;
   render();
 }
 
+/** Picks the newer of this device's copy and the account's copy. */
+async function pullFromCloud(): Promise<void> {
+  try {
+    const cloud = await loadCloudState();
+    if (cloud?.profile && (!state.profile || cloud.savedAt > state.savedAt)) {
+      Object.assign(state, cloud);
+      saveLocalOnly(state);
+    } else if (state.profile) {
+      queueCloudSave(state);
+    }
+  } catch (err) {
+    // Offline or the table isn't set up: keep using this device's copy.
+    console.warn('Could not load from your account:', err);
+  }
+  cloudLoading = false;
+  render();
+}
+
+async function logOut(): Promise<void> {
+  await flushCloudSave();
+  accountMsg = '';
+  stateOwner = ''; // re-check the account on the next login, in case another device changed things
+  friendsData = null;
+  visiting = null;
+  cheersChecked = false;
+  resetSocial();
+  await signOut();
+}
+
+const buddyCard = (profile: Profile, mood: Mood): BuddyCard => ({
+  name: profile.name,
+  character: profile.character,
+  mood,
+  equipped: state.equipped,
+  house: state.house,
+});
+
+async function refreshFriends(profile: Profile, mood: Mood): Promise<void> {
+  friendsLoading = true;
+  try {
+    friendsData = await loadFriends(buddyCard(profile, mood));
+  } catch (err) {
+    // Stay on the error until the user retries, instead of reloading in a loop.
+    friendsData = null;
+    friendsFailed = true;
+    friendsMsg = errorText(err);
+  }
+  friendsLoading = false;
+  if (view === 'friends') render();
+}
+
+/** Cheers friends sent since last time: a pop-up and +10 Love each. */
+async function checkCheers(): Promise<void> {
+  try {
+    const from = await collectCheers();
+    if (!from.length) return;
+    const care = currentCare(state.care);
+    state.care = { ...care, love: Math.min(100, care.love + 10 * from.length) };
+    const names = [...new Set(from)];
+    const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+    notify('cheer', `${who} cheered for ${state.profile?.name ?? 'your buddy'}! +${10 * from.length} Love`);
+    render();
+  } catch (err) {
+    console.warn('Could not check cheers:', err);
+  }
+}
+
 function render(): void {
   const user = currentUser();
+  if (needsNewPassword()) {
+    renderNewPassword(app, render);
+    return;
+  }
   if (!user) {
     renderAuth(app, render);
+    return;
+  }
+  if (needsTwoFactor()) {
+    renderTwoFactorChallenge(app, render);
+    return;
+  }
+  if (settingUpTwoFactor) {
+    const finish = (msg: string) => {
+      settingUpTwoFactor = false;
+      accountMsg = msg;
+      render();
+    };
+    void renderTwoFactorSetup(app, () => finish('Two-factor sign-in is on.'), () => finish(''));
     return;
   }
   if (stateOwner !== user.email) {
@@ -165,10 +331,22 @@ function render(): void {
     stateOwner = user.email;
     chatLog = [];
     bubbleKey = '';
+    friendsData = null;
+    friendsFailed = false;
+    visiting = null;
+    cheersChecked = false;
+    resetSocial();
     autoSynced = false;
     bankMsg = '';
     view = 'buddy';
-    alerted.clear();
+    if (cloudEnabled) {
+      cloudLoading = true;
+      void pullFromCloud();
+    }
+  }
+  if (cloudLoading) {
+    app.innerHTML = `<main class="onboard card auth"><div class="onboard-head">${brand()}</div><p class="hint">Loading your buddy...</p></main>`;
+    return;
   }
   if (!user.consent || managingConsent) {
     const firstTime = !user.consent;
@@ -178,7 +356,8 @@ function render(): void {
       () => {
         managingConsent = false;
         autoSynced = true;
-        if (firstTime && bankEnabled && !state.bank) void linkBank();
+        // New accounts choose how to add spending during setup; returning users go straight to their bank.
+        if (firstTime && bankEnabled && !state.bank && state.profile) void linkBank();
         else render();
       },
       user.consent
@@ -205,6 +384,7 @@ function render(): void {
             render();
           }
         : null,
+      bankEnabled ? { link: () => void linkBank(), busy: bankBusy, message: bankMsg } : null,
     );
     return;
   }
@@ -212,6 +392,10 @@ function render(): void {
     autoSynced = true;
     const due = !state.bank || (user.consent.scopes.includes('sync') && Date.now() - state.bank.syncedAt > DAY);
     if (bankEnabled && due) void syncNow(true);
+  }
+  if (socialEnabled && !cheersChecked) {
+    cheersChecked = true;
+    void checkCheers();
   }
   collectRewards();
   renderDashboard(state.profile);
@@ -236,9 +420,9 @@ function freshStartMessage(profile: Profile): string {
   const last = analyze(profile, state.expenses, monthStart(-1));
   const month = monthLabel(monthStart(), false);
   if (last.spent > 0 && (last.mood === 'dead' || last.mood === 'angry')) {
-    return `${profile.name} is back! ${month} is a fresh start after a rough ${monthLabel(monthStart(-1), false)}. Let's keep wants low this time.`;
+    return `${petName(profile)} is back! A fresh start for ${month}.`;
   }
-  return `A fresh ${month} for ${profile.name}! Add an expense or sync your bank to get started.`;
+  return `A fresh ${month} for ${petName(profile)}!`;
 }
 
 function chatContext(profile: Profile): ChatContext {
@@ -304,7 +488,7 @@ function chatPageHtml(profile: Profile, a: Analysis, mood: Mood): string {
 
 function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): string {
   const base = view.spent === 0 ? freshStartMessage(profile) : view.message;
-  const message = mood === 'dead' ? base : (careNote(profile.name, care) ?? base);
+  const message = mood === 'dead' ? base : (careNote(petName(profile), care) ?? base);
   const selected = view.categories.find((c) => c.category === selectedCat) ?? view.topWant ?? view.categories[0];
   const monthName = monthLabel(monthStart(), false);
   const asOf = new Date();
@@ -339,12 +523,13 @@ function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): str
       ${view.tip ? `<p class="tip">${LINE.bulb}<span>${esc(view.tip)}</span></p>` : ''}
     </section>
 
+    ${renderGoals(state, profile, view, goalsOpen)}
+
+    ${cashFlowCard(view)}
+
     <section class="card">${renderCategoryDetail(selected, view.spent)}</section>
 
-    <section class="card">
-      <h2>Spending categories</h2>
-      ${renderCategoryList(view, selected.category)}
-    </section>
+    ${categoriesCard(view, selected.category)}
 
     <nav class="action-bar" aria-label="Care for your buddy">
       ${CARE_BUTTONS.map(
@@ -400,6 +585,79 @@ function historyHtml(profile: Profile, now: Analysis, mood: Mood): string {
     </section>`;
 }
 
+const wholeDollars = (n: number) => formatMoney(Math.round(n)).replace(/\.00$/, '');
+const incomeIn = (monthKey: string) => state.income.filter((i) => i.date.startsWith(monthKey));
+
+/** Money in vs money out this month, folded to one line ("Cash flow · +$800 left"). */
+function cashFlowCard(a: Analysis): string {
+  const moneyIn = incomeIn(a.monthKey).reduce((s, i) => s + i.amount, 0);
+  const left = moneyIn - a.spent;
+  const summary = moneyIn > 0 ? `${left >= 0 ? '+' : '−'}${wholeDollars(Math.abs(left))} left` : 'Add your income';
+  const hint =
+    moneyIn === 0
+      ? 'Add your paychecks or other income to see what you have left over.'
+      : left >= 0
+        ? `You kept ${Math.round((left / moneyIn) * 100)}% of what came in.`
+        : `You spent ${wholeDollars(-left)} more than came in.`;
+  return `
+    <details class="card fold cash" id="cash-card" ${cashOpen ? 'open' : ''}>
+      <summary class="fold-head">
+        <h2>Cash flow</h2>
+        <span class="fold-count ${moneyIn === 0 ? '' : left >= 0 ? 'pos' : 'neg'}">${summary}</span>
+      </summary>
+      <div class="flow">
+        <div><small>Money in</small><b class="pos">${wholeDollars(moneyIn)}</b></div>
+        <div><small>Money out</small><b class="neg">${wholeDollars(a.spent)}</b></div>
+        <div><small>Left over</small><b class="${left >= 0 ? 'pos' : 'neg'}">${left < 0 ? '−' : ''}${wholeDollars(Math.abs(left))}</b></div>
+      </div>
+      ${moneyIn > 0 ? `<div class="bar"><div class="fill ${a.spent > moneyIn ? 'over' : a.spent > moneyIn * 0.8 ? 'warn' : 'ok'}" style="width:${Math.min(100, Math.round((a.spent / moneyIn) * 100))}%"></div></div>` : ''}
+      <p class="hint">${esc(hint)}</p>
+      <button class="secondary" data-view="report">Add money in</button>
+    </details>`;
+}
+
+function incomeSection(monthKey: string): string {
+  const list = incomeIn(monthKey).sort((x, y) => y.date.localeCompare(x.date));
+  return `
+    <section class="card">
+      <h2>Money in</h2>
+      <p class="hint">Paychecks and deposits from your bank or statement show up here. Add cash income yourself.</p>
+      <form id="income-form" class="expense-form">
+        <input name="amount" type="number" min="0.01" step="0.01" placeholder="Amount" aria-label="Amount" required />
+        <input name="note" maxlength="60" placeholder="Paycheck, side job..." aria-label="What it was" />
+        <input name="date" type="date" value="${localDateKey()}" aria-label="Date" required />
+        <button type="submit">Add money in</button>
+      </form>
+      ${
+        list.length
+          ? `<ul class="expenses">${list
+              .map(
+                (i: Income) => `
+            <li>
+              <div><strong>${esc(i.note || 'Income')}</strong><br /><small>${esc(i.date)}</small></div>
+              <span class="pos">+${formatMoney(i.amount)}</span>
+              <button class="icon" data-delete-income="${esc(i.id)}" aria-label="Delete income">&times;</button>
+            </li>`,
+              )
+              .join('')}</ul>`
+          : '<p class="empty">No money in this month yet.</p>'
+      }
+    </section>`;
+}
+
+/** Folded to one line ("Spending categories · 2 over limit") until opened. */
+function categoriesCard(a: Analysis, selected: Category): string {
+  const over = a.categories.filter((c) => c.spent > 0 && c.ratio > 1).length;
+  return `
+    <details class="card fold" id="categories-card" ${categoriesOpen ? 'open' : ''}>
+      <summary class="fold-head">
+        <h2>Spending categories</h2>
+        <span class="fold-count ${over ? 'neg' : 'pos'}">${over ? `${over} over limit` : 'All on track'}</span>
+      </summary>
+      ${renderCategoryList(a, selected)}
+    </details>`;
+}
+
 function reportHtml(profile: Profile, view: Analysis): string {
   const expenses = state.expenses
     .filter((e) => e.date.startsWith(view.monthKey))
@@ -421,10 +679,9 @@ function reportHtml(profile: Profile, view: Analysis): string {
       </div>
     </section>
 
-    <section class="card">
-      <h2>Spending categories</h2>
-      ${renderCategoryList(view, selected.category)}
-    </section>
+    ${categoriesCard(view, selected.category)}
+
+    ${incomeSection(view.monthKey)}
 
     <section class="card">
       <h2>Add expense</h2>
@@ -465,6 +722,7 @@ function reportHtml(profile: Profile, view: Analysis): string {
 function settingsHtml(profile: Profile): string {
   const user = currentUser();
   const granted = SCOPES.filter((s) => user?.consent?.scopes.includes(s.id));
+  const twoFactor = twoFactorOn();
   return `
     <section class="card settings">
       <div class="profile-row">
@@ -478,7 +736,8 @@ function settingsHtml(profile: Profile): string {
         <div><dt>Coins</dt><dd>${state.coins}</dd></div>
         <div><dt>Transactions saved</dt><dd>${state.expenses.length}</dd></div>
       </dl>
-      <button id="edit">Edit buddy, budget &amp; quiz</button>
+      <button id="edit">Edit buddy, budget &amp; goals</button>
+      <button id="restart-tutorial" class="secondary">Take the quick tour</button>
     </section>
 
     <section class="card settings">
@@ -486,9 +745,19 @@ function settingsHtml(profile: Profile): string {
       <dl class="facts">
         <div><dt>Email</dt><dd>${esc(user?.email ?? '')}</dd></div>
         <div><dt>Bank permissions</dt><dd>${esc(granted.map((s) => s.label).join(', '))}</dd></div>
+        ${twoFactor === null ? '' : `<div><dt>Two-factor sign-in</dt><dd>${twoFactor ? 'On' : 'Off'}</dd></div>`}
       </dl>
+      ${twoFactor === false ? '<p class="hint">Turn on two-factor sign-in so a stolen password alone can&#39;t open your bank data.</p>' : ''}
+      ${accountMsg ? `<p class="import-msg" role="status">${esc(accountMsg)}</p>` : ''}
+      ${twoFactor === null ? '' : `<button id="two-factor" class="${twoFactor ? 'secondary' : ''}">${twoFactor ? 'Turn off two-factor' : 'Turn on two-factor'}</button>`}
       <button id="permissions" class="secondary">Manage bank permissions</button>
       <button id="logout" class="secondary">Log out</button>
+      <button id="logout-clear" class="secondary">Log out &amp; clear this device</button>
+      <p class="hint small-print">${
+        cloudEnabled
+          ? 'Your buddy, coins and transactions are backed up to your account. Clearing only removes the copy on this device.'
+          : 'Your buddy, coins and transactions are saved on this device only. Clearing removes them for good.'
+      }</p>
     </section>
 
     ${bankHtml()}
@@ -529,6 +798,36 @@ function bankHtml(): string {
     </section>`;
 }
 
+function timeAgo(at: number): string {
+  const mins = Math.round((Date.now() - at) / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  if (mins < 24 * 60) return `${Math.round(mins / 60)} h ago`;
+  return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function notificationsHtml(): string {
+  return `
+    <section class="card">
+      <div class="notices-head">
+        <h2>Notifications</h2>
+        ${state.notices.length ? '<button class="link" id="clear-notices">Clear all</button>' : ''}
+      </div>
+      ${
+        state.notices.length
+          ? `<ul class="notices">${state.notices
+              .map(
+                (n) => `<li class="${n.read ? '' : 'unread'}">
+                  <span class="notice-icon">${NOTICE_ICON[n.kind]}</span>
+                  <div><p>${esc(n.text)}</p><small>${timeAgo(n.at)}</small></div>
+                </li>`,
+              )
+              .join('')}</ul>`
+          : '<p class="empty">Nothing yet. Coin rewards, spending alerts, cheers from friends and bank syncs show up here.</p>'
+      }
+    </section>`;
+}
+
 function drawerHtml(profile: Profile, mood: Mood): string {
   return `
     <div class="scrim" id="scrim"></div>
@@ -565,21 +864,82 @@ function renderDashboard(profile: Profile): void {
     buddy: () => homeHtml(profile, now, care, mood),
     chat: () => chatPageHtml(profile, now, mood),
     history: () => historyHtml(profile, now, mood),
+    notifications: () => notificationsHtml(),
+    friends: () => {
+      if (!socialEnabled) {
+        return `${myHouseHtml(state, profile, mood)}<section class="card"><h2>Friends</h2><p class="hint">Friends need an online account. This copy of OinkCoin isn't connected to one.</p></section>`;
+      }
+      const friend = visiting ? friendsData?.friends.find((f) => f.id === visiting) : undefined;
+      if (friend) return visitHtml(friend, friendsMsg);
+      if (!friendsData && !friendsLoading && !friendsFailed) void refreshFriends(profile, mood);
+      return myHouseHtml(state, profile, mood) + friendsHtml(friendsData, !friendsFailed, friendsMsg);
+    },
     report: () => reportHtml(profile, month),
     store: () => renderStore(state, profile),
     learn: () => renderLearn(profile, now),
     settings: () => settingsHtml(profile),
   }[view]();
 
+  if (socialEnabled) publishBuddy(buddyCard(profile, mood));
+  const unread = view === 'notifications' ? 0 : state.notices.filter((n) => !n.read).length;
+
   setDrawer(false);
   app.innerHTML = `
     <header class="topbar">
       <button class="menu-btn" id="menu" aria-label="Open menu" aria-expanded="false" aria-controls="drawer"><span></span><span></span><span></span></button>
       ${brand()}
-      <button class="coin-chip" data-view="store" aria-label="${state.coins} coins, open store">${ICONS.coin}<b>${state.coins}</b></button>
+      <div class="top-actions">
+        <button class="bell${unread ? ' has-unread' : ''}" data-view="notifications" aria-label="Notifications${unread ? `, ${unread} unread` : ''}">
+          ${LINE.bell}${unread ? `<span class="badge">${unread > 9 ? '9+' : unread}</span>` : ''}
+        </button>
+        <button class="coin-chip" data-view="store" aria-label="${state.coins} coins, open store">${ICONS.coin}<b>${state.coins}</b></button>
+      </div>
     </header>
     ${drawerHtml(profile, mood)}
-    <main class="stack">${body}</main>`;
+    <main class="stack">${body}</main>
+    ${state.tutorialSeen ? '' : tutorialHtml(tutorialStep)}`;
+
+  // Opening the list marks everything read (shown highlighted this once).
+  if (view === 'notifications' && state.notices.some((n) => !n.read)) {
+    state.notices = state.notices.map((n) => ({ ...n, read: true }));
+    saveState(state);
+  }
+  // Keep the goals card open or closed across re-renders.
+  app.querySelector<HTMLDetailsElement>('#goals-card')?.addEventListener('toggle', (e) => {
+    goalsOpen = (e.target as HTMLDetailsElement).open;
+  });
+  app.querySelector<HTMLDetailsElement>('#cash-card')?.addEventListener('toggle', (e) => {
+    cashOpen = (e.target as HTMLDetailsElement).open;
+  });
+  app.querySelector<HTMLDetailsElement>('#categories-card')?.addEventListener('toggle', (e) => {
+    categoriesOpen = (e.target as HTMLDetailsElement).open;
+  });
+  app.querySelector('#clear-notices')?.addEventListener('click', () => {
+    state.notices = [];
+    persist();
+  });
+
+  const finishTutorial = () => {
+    state.tutorialSeen = true;
+    tutorialStep = 0;
+    saveState(state);
+    render();
+  };
+  app.querySelector('#tutorial-skip')?.addEventListener('click', finishTutorial);
+  app.querySelector('#tutorial-next')?.addEventListener('click', () => {
+    if (tutorialStep >= tutorialLength - 1) return finishTutorial();
+    tutorialStep++;
+    renderDashboard(profile);
+  });
+  app.querySelector('#tutorial-back')?.addEventListener('click', () => {
+    tutorialStep = Math.max(0, tutorialStep - 1);
+    renderDashboard(profile);
+  });
+  app.querySelector('#restart-tutorial')?.addEventListener('click', () => {
+    tutorialStep = 0;
+    state.tutorialSeen = false;
+    renderDashboard(profile);
+  });
 
   app.querySelector('#menu')!.addEventListener('click', () => setDrawer(true));
   app.querySelector('#close-menu')!.addEventListener('click', () => setDrawer(false));
@@ -588,10 +948,110 @@ function renderDashboard(profile: Profile): void {
     b.addEventListener('click', () => {
       view = b.dataset.view as View;
       selectedCat = null;
+      if (view === 'friends') {
+        // Fresh list each time you open Friends.
+        friendsData = null;
+        friendsFailed = false;
+        friendsMsg = '';
+        visiting = null;
+      }
       render();
       window.scrollTo(0, 0);
     }),
   );
+
+  // Friends
+  const reloadFriends = () => {
+    friendsData = null;
+    friendsFailed = false;
+    render();
+  };
+  app.querySelector('#retry-friends')?.addEventListener('click', () => {
+    friendsMsg = '';
+    reloadFriends();
+  });
+  app.querySelector<HTMLButtonElement>('#copy-code')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    try {
+      await navigator.clipboard.writeText(btn.dataset.code!);
+      btn.textContent = 'Copied!';
+    } catch {
+      btn.textContent = 'Select and copy it';
+    }
+  });
+  const addForm = app.querySelector<HTMLFormElement>('#add-friend');
+  addForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = String(new FormData(addForm).get('code')).trim();
+    if (!code) return;
+    addForm.querySelector('button')!.disabled = true;
+    try {
+      friendsMsg = await sendFriendRequest(code);
+    } catch (err) {
+      friendsMsg = errorText(err);
+    }
+    reloadFriends();
+  });
+  app.querySelector<HTMLInputElement>('#display-name')?.addEventListener('change', async (e) => {
+    try {
+      await setDisplayName((e.target as HTMLInputElement).value);
+      friendsMsg = 'Saved. Friends will see this name.';
+    } catch (err) {
+      friendsMsg = errorText(err);
+    }
+    reloadFriends();
+  });
+  const friendAction = (attr: string, act: (id: string) => Promise<unknown>, done: string) =>
+    app.querySelectorAll<HTMLButtonElement>(`[data-${attr}]`).forEach((b) =>
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        try {
+          await act(b.getAttribute(`data-${attr}`)!);
+          friendsMsg = done;
+        } catch (err) {
+          friendsMsg = errorText(err);
+        }
+        reloadFriends();
+      }),
+    );
+  friendAction('accept', acceptFriend, 'You are now friends!');
+  friendAction('decline', removeFriend, 'Request declined.');
+  app.querySelectorAll<HTMLButtonElement>('[data-visit]').forEach((b) =>
+    b.addEventListener('click', () => {
+      visiting = b.dataset.visit!;
+      friendsMsg = '';
+      render();
+      window.scrollTo(0, 0);
+    }),
+  );
+  app.querySelector('#back-friends')?.addEventListener('click', () => {
+    visiting = null;
+    friendsMsg = '';
+    render();
+  });
+  app.querySelector<HTMLButtonElement>('#cheer')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    btn.disabled = true;
+    try {
+      friendsMsg = (await sendCheer(btn.dataset.cheer!))
+        ? 'Cheer sent! They get +10 Love next time they open OinkCoin.'
+        : 'You already cheered for them today. Come back tomorrow!';
+    } catch (err) {
+      friendsMsg = errorText(err);
+    }
+    render();
+  });
+  app.querySelector<HTMLButtonElement>('#unfriend')?.addEventListener('click', async (e) => {
+    if (!confirm('Remove this friend? You can add each other again with your codes.')) return;
+    try {
+      await removeFriend((e.currentTarget as HTMLButtonElement).dataset.unfriend!);
+      visiting = null;
+      friendsMsg = 'Friend removed.';
+    } catch (err) {
+      friendsMsg = errorText(err);
+    }
+    reloadFriends();
+  });
 
   app.querySelector('#edit')?.addEventListener('click', () => {
     editing = true;
@@ -602,7 +1062,40 @@ function renderDashboard(profile: Profile): void {
     render();
   });
   app.querySelector('#logout')?.addEventListener('click', async () => {
+    await logOut();
+    render();
+  });
+  app.querySelector('#logout-clear')?.addEventListener('click', async () => {
+    const warning = cloudEnabled
+      ? 'Log out and remove your data from this device? It stays backed up to your account.'
+      : 'Log out and remove your buddy, coins and transactions from this device? This cannot be undone.';
+    if (!confirm(warning)) return;
+    await flushCloudSave();
+    clearState();
+    Object.assign(state, emptyState());
+    stateOwner = '';
+    accountMsg = '';
+    try {
+      sessionStorage.clear();
+    } catch {
+      // Nothing to clear.
+    }
     await signOut();
+    render();
+  });
+  app.querySelector('#two-factor')?.addEventListener('click', async () => {
+    accountMsg = '';
+    if (!twoFactorOn()) {
+      settingUpTwoFactor = true;
+      return render();
+    }
+    if (!confirm('Turn off two-factor sign-in? Your account will be protected by your password only.')) return;
+    try {
+      await disableTwoFactor();
+      accountMsg = 'Two-factor sign-in is off.';
+    } catch (err) {
+      accountMsg = errorText(err);
+    }
     render();
   });
   app.querySelector('#link-bank')?.addEventListener('click', () => void linkBank());
@@ -630,6 +1123,7 @@ function renderDashboard(profile: Profile): void {
         return;
       }
     }
+    cancelCloudSave();
     clearState();
     Object.assign(state, emptyState());
     stateOwner = '';
@@ -647,6 +1141,26 @@ function renderDashboard(profile: Profile): void {
       state.owned.push(item.id);
       state.equipped[item.slot] = item.id;
       showToast(`${ICONS.bag}<span>${esc(item.name)} is yours!</span>`);
+      persist();
+    }),
+  );
+  app.querySelectorAll<HTMLButtonElement>('[data-buy-house]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const item = HOUSE_ITEM_BY_ID.get(b.dataset.buyHouse!);
+      if (!item || state.owned.includes(item.id) || state.coins < item.price) return;
+      state.coins -= item.price;
+      state.owned.push(item.id);
+      state.house[item.slot] = item.id;
+      showToast(`${ICONS.bag}<span>${esc(item.name)} is in your house!</span>`);
+      persist();
+    }),
+  );
+  app.querySelectorAll<HTMLButtonElement>('[data-place]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const item = HOUSE_ITEM_BY_ID.get(b.dataset.place!);
+      if (!item || !state.owned.includes(item.id)) return;
+      if (state.house[item.slot] === item.id) delete state.house[item.slot];
+      else state.house[item.slot] = item.id;
       persist();
     }),
   );
@@ -734,13 +1248,36 @@ function renderDashboard(profile: Profile): void {
     try {
       const incoming = await readStatementFile(file);
       const before = state.expenses.length;
-      state.expenses = mergeExpenses(state.expenses, incoming);
-      moneyMsg = `Imported ${state.expenses.length - before} new transactions.`;
+      const beforeIn = state.income.length;
+      state.expenses = mergeExpenses(state.expenses, incoming.expenses);
+      state.income = mergeIncome(state.income, incoming.income);
+      const deposits = state.income.length - beforeIn;
+      moneyMsg = `Imported ${state.expenses.length - before} new purchases${deposits ? ` and ${deposits} deposit${deposits === 1 ? '' : 's'}` : ''}.`;
     } catch (err) {
       moneyMsg = err instanceof Error ? err.message : 'Could not read that file.';
     }
     persist();
   });
+  const incomeForm = app.querySelector<HTMLFormElement>('#income-form');
+  incomeForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const data = new FormData(incomeForm);
+    const amount = Number(data.get('amount'));
+    if (!(amount > 0)) return;
+    state.income.push({
+      id: crypto.randomUUID(),
+      amount: Math.round(amount * 100) / 100,
+      note: String(data.get('note') ?? '').trim(),
+      date: String(data.get('date')),
+    });
+    persist();
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-delete-income]').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      state.income = state.income.filter((i) => i.id !== btn.dataset.deleteIncome);
+      persist();
+    }),
+  );
   app.querySelectorAll<HTMLButtonElement>('[data-delete]').forEach((btn) =>
     btn.addEventListener('click', () => {
       state.expenses = state.expenses.filter((e) => e.id !== btn.dataset.delete);
@@ -772,6 +1309,36 @@ function doAction(profile: Profile, action: CareAction): void {
   clearTimeout(reactTimer);
   reactTimer = window.setTimeout(render, 2200);
 }
+
+if (cloudEnabled) {
+  setSaveListener(queueCloudSave);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushCloudSave();
+  });
+}
+
+// GitHub Pages lets browsers reuse the page for 10 minutes, so after a deploy people kept seeing the
+// old version. Check for a newer build when the app opens or comes back to the foreground, and reload.
+async function checkForUpdate(): Promise<void> {
+  if (import.meta.env.DEV || location.hash) return; // don't interrupt email links that carry a #token
+  try {
+    const current = document.querySelector<HTMLScriptElement>('script[type="module"][src*="assets/index-"]')?.src ?? '';
+    const html = await (await fetch(`${location.pathname}?check=${Date.now()}`, { cache: 'no-store' })).text();
+    const latest = html.match(/assets\/index-[\w-]+\.js/)?.[0];
+    if (!latest || !current || current.endsWith(latest)) return;
+    // Only once per new build, so a stale cache can never cause a reload loop.
+    if (sessionStorage.getItem('oinkcoin-reloaded-for') === latest) return;
+    sessionStorage.setItem('oinkcoin-reloaded-for', latest);
+    location.replace(`${location.pathname}?v=${Date.now()}`);
+  } catch {
+    // Offline: keep the current version.
+  }
+}
+if (new URLSearchParams(location.search).has('v')) history.replaceState(null, '', location.pathname + location.hash);
+void checkForUpdate();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') void checkForUpdate();
+});
 
 initAuth(render).then(() => {
   render();

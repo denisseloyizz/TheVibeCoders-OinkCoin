@@ -1,6 +1,7 @@
 import { ITEMS, renderItemPreview, type Item } from './accessories';
 import { renderAvatar } from './avatar';
 import { formatMoney } from './budget';
+import { HOUSE_ITEMS, HOUSE_SECTIONS, renderHousePreview, type HouseItem } from './house';
 import { ICONS } from './icons';
 import { COINS_PER_GOAL, currentWeekWants, weeklyWantsLimit } from './rewards';
 import type { AppState, Profile, Slot } from './types';
@@ -20,6 +21,19 @@ function itemCard(item: Item, state: AppState): string {
     : `<button class="small buy" data-buy="${item.id}" ${state.coins < item.price ? 'disabled' : ''} aria-label="Buy ${esc(item.name)} for ${item.price} coins">${ICONS.coin}${item.price}</button>`;
   return `<div class="shop-item${wearing ? ' wearing' : ''}">
     <div class="shop-art">${renderItemPreview(item)}</div>
+    <span class="shop-name">${esc(item.name)}</span>
+    ${action}
+  </div>`;
+}
+
+function houseItemCard(item: HouseItem, state: AppState): string {
+  const owned = state.owned.includes(item.id);
+  const placed = state.house[item.slot] === item.id;
+  const action = owned
+    ? `<button class="small ${placed ? 'secondary' : ''}" data-place="${item.id}">${placed ? 'Remove' : 'Place'}</button>`
+    : `<button class="small buy" data-buy-house="${item.id}" ${state.coins < item.price ? 'disabled' : ''} aria-label="Buy ${esc(item.name)} for ${item.price} coins">${ICONS.coin}${item.price}</button>`;
+  return `<div class="shop-item house-item${placed ? ' wearing' : ''}">
+    <div class="shop-art">${renderHousePreview(item)}</div>
     <span class="shop-name">${esc(item.name)}</span>
     ${action}
   </div>`;
@@ -49,5 +63,16 @@ export function renderStore(state: AppState, profile: Profile): string {
           .map((i) => itemCard(i, state))
           .join('')}</div>
       </section>`,
-    ).join('')}`;
+    ).join('')}
+    <section class="card">
+      <h2>For your house</h2>
+      <p class="hint">Decorate ${esc(profile.name)}'s house. Friends see it when they visit.</p>
+      ${HOUSE_SECTIONS.map(
+        (s) => `
+        <h3>${s.title}</h3>
+        <div class="shop-grid">${HOUSE_ITEMS.filter((i) => i.slot === s.slot)
+          .map((i) => houseItemCard(i, state))
+          .join('')}</div>`,
+      ).join('')}
+    </section>`;
 }

@@ -135,13 +135,14 @@ function pig(id: string, mood: Mood, hasHat: boolean): string {
     ${face(mood, 100, 104, 138, 22)}`;
 }
 
-export function renderAvatar(character: Character, mood: Mood, equipped: Equipped = {}): string {
+/** `bare` leaves out the round background, for drawing the buddy inside a scene like a house. */
+export function renderAvatar(character: Character, mood: Mood, equipped: Equipped = {}, bare = false): string {
   const id = `av${++uid}`;
   const body = character === 'pig' ? pig(id, mood, Boolean(equipped.hat)) : human(id, character, mood);
   const dead = mood === 'dead';
   return `<svg class="avatar avatar-${mood}" viewBox="0 0 200 200" role="img" aria-label="${character} avatar feeling ${mood}">
     ${defs(id)}
-    <circle cx="100" cy="100" r="96" fill="url(#${id}-bg)"/>
+    ${bare ? '' : `<circle cx="100" cy="100" r="96" fill="url(#${id}-bg)"/>`}
     <g ${dead ? `filter="url(#${id}-gray)"` : ''}>${body}${renderAccessories(character, equipped)}</g>
     ${dead ? `<ellipse class="halo" cx="100" cy="24" rx="30" ry="7" fill="none" stroke="#ffc93c" stroke-width="5"/>` : ''}
   </svg>`;
