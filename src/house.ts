@@ -1,4 +1,5 @@
 import { renderAvatar } from './avatar';
+import { t, T } from './i18n';
 import type { Character, Equipped, Mood } from './types';
 
 export type HouseSlot = 'wall' | 'floor' | 'art' | 'bed' | 'plant' | 'lamp';
@@ -14,12 +15,12 @@ export interface HouseItem {
 }
 
 export const HOUSE_SECTIONS: { slot: HouseSlot; title: string }[] = [
-  { slot: 'wall', title: 'Wallpaper' },
-  { slot: 'floor', title: 'Floors' },
-  { slot: 'art', title: 'Wall art' },
-  { slot: 'bed', title: 'Beds & seats' },
-  { slot: 'plant', title: 'Plants' },
-  { slot: 'lamp', title: 'Lights' },
+  { slot: 'wall', title: T('Wallpaper') },
+  { slot: 'floor', title: T('Floors') },
+  { slot: 'art', title: T('Wall art') },
+  { slot: 'bed', title: T('Beds & seats') },
+  { slot: 'plant', title: T('Plants') },
+  { slot: 'lamp', title: T('Lights') },
 ];
 
 const WALL = 'x="0" y="0" width="320" height="150"';
@@ -29,7 +30,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   // Wallpaper
   {
     id: 'wall-stripes',
-    name: 'Pink stripes',
+    name: T('Pink stripes'),
     slot: 'wall',
     price: 15,
     art: (id) => `<defs><pattern id="${id}-st" width="24" height="24" patternUnits="userSpaceOnUse">
@@ -38,7 +39,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   },
   {
     id: 'wall-dots',
-    name: 'Gold dots',
+    name: T('Gold dots'),
     slot: 'wall',
     price: 15,
     art: (id) => `<defs><pattern id="${id}-dt" width="22" height="22" patternUnits="userSpaceOnUse">
@@ -47,7 +48,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   },
   {
     id: 'wall-stars',
-    name: 'Starry night',
+    name: T('Starry night'),
     slot: 'wall',
     price: 25,
     art: (id) => `<defs><pattern id="${id}-sk" width="60" height="50" patternUnits="userSpaceOnUse">
@@ -59,7 +60,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   // Floors
   {
     id: 'floor-wood',
-    name: 'Wood floor',
+    name: T('Wood floor'),
     slot: 'floor',
     price: 12,
     art: (id) => `<defs><pattern id="${id}-wd" width="80" height="18" patternUnits="userSpaceOnUse">
@@ -68,7 +69,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   },
   {
     id: 'floor-check',
-    name: 'Checkered tiles',
+    name: T('Checkered tiles'),
     slot: 'floor',
     price: 18,
     art: (id) => `<defs><pattern id="${id}-ck" width="28" height="28" patternUnits="userSpaceOnUse">
@@ -77,7 +78,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   },
   {
     id: 'floor-rug',
-    name: 'Cloud rug',
+    name: T('Cloud rug'),
     slot: 'floor',
     price: 20,
     art: () => `<rect ${FLOOR} fill="#e9d3b8"/>
@@ -86,7 +87,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   // Wall art
   {
     id: 'art-coin',
-    name: 'Coin poster',
+    name: T('Coin poster'),
     slot: 'art',
     price: 10,
     art: () => `<g transform="translate(30 30)"><rect width="56" height="70" rx="4" fill="#fff" stroke="#b97f00" stroke-width="3"/>
@@ -95,7 +96,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   },
   {
     id: 'art-window',
-    name: 'Sunny window',
+    name: T('Sunny window'),
     slot: 'art',
     price: 16,
     art: () => `<g transform="translate(26 26)"><rect width="74" height="64" rx="4" fill="#bfe3ff" stroke="#fff" stroke-width="5"/>
@@ -105,7 +106,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   // Beds & seats
   {
     id: 'bed-cozy',
-    name: 'Cozy bed',
+    name: T('Cozy bed'),
     slot: 'bed',
     price: 30,
     art: () => `<g transform="translate(222 118)"><rect x="0" y="22" width="88" height="34" rx="6" fill="#e5487f"/>
@@ -114,7 +115,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   },
   {
     id: 'bed-beanbag',
-    name: 'Bean bag',
+    name: T('Bean bag'),
     slot: 'bed',
     price: 18,
     art: () => `<g transform="translate(238 138)"><path d="M0 40c-4-26 18-44 38-40 20 4 36 18 34 40z" fill="#8b5cf6"/>
@@ -123,7 +124,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   // Plants
   {
     id: 'plant-cactus',
-    name: 'Cactus',
+    name: T('Cactus'),
     slot: 'plant',
     price: 8,
     art: () => `<g transform="translate(22 130)"><rect x="0" y="30" width="30" height="24" rx="4" fill="#d9774a"/>
@@ -132,7 +133,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   },
   {
     id: 'plant-monstera',
-    name: 'Big leafy plant',
+    name: T('Big leafy plant'),
     slot: 'plant',
     price: 14,
     art: () => `<g transform="translate(14 104)"><rect x="12" y="56" width="34" height="28" rx="4" fill="#fff" stroke="#ece7e9" stroke-width="2"/>
@@ -143,7 +144,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   // Lights
   {
     id: 'lamp-lava',
-    name: 'Lava lamp',
+    name: T('Lava lamp'),
     slot: 'lamp',
     price: 12,
     art: () => `<g transform="translate(196 132)"><path d="M6 46h20l-4-40h-12z" fill="#ff8fb3" opacity=".85"/>
@@ -152,7 +153,7 @@ export const HOUSE_ITEMS: HouseItem[] = [
   },
   {
     id: 'lamp-fairy',
-    name: 'Fairy lights',
+    name: T('Fairy lights'),
     slot: 'lamp',
     price: 20,
     art: () => `<path d="M0 12Q80 40 160 14T320 14" stroke="#5b4b52" stroke-width="1.5" fill="none"/>` +
@@ -176,7 +177,7 @@ export interface Resident {
 }
 
 /** A room with the given decor, and optionally a buddy standing in it. */
-export function renderHouse(house: House, resident: Resident | null, label = 'House'): string {
+export function renderHouse(house: House, resident: Resident | null, label = t('House')): string {
   const id = `house${++uid}`;
   const art = (slot: HouseSlot) => {
     const item = house[slot] ? HOUSE_ITEM_BY_ID.get(house[slot]!) : undefined;
@@ -194,5 +195,5 @@ export function renderHouse(house: House, resident: Resident | null, label = 'Ho
 }
 
 export function renderHousePreview(item: HouseItem): string {
-  return renderHouse({ [item.slot]: item.id }, null, item.name);
+  return renderHouse({ [item.slot]: item.id }, null, t(item.name));
 }

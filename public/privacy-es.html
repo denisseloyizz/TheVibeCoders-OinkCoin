@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es-MX">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffc93c" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <title>Aviso de privacidad de OinkCoin</title>
+    <style>
+      :root {
+        --bg: #f7f5f3;
+        --card: #ffffff;
+        --text: #1d1a1c;
+        --muted: #7a7276;
+        --line: #ece7e9;
+        --pink-deep: #c93468;
+        --gold-soft: #fdf4dd;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-size: 15px;
+        line-height: 1.6;
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 1rem; background: var(--bg); }
+      main { max-width: 680px; margin: 0 auto; background: var(--card); border-radius: 18px; padding: 1.75rem 1.5rem; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
+      h1 { font-size: 1.6rem; letter-spacing: -0.02em; margin: 0 0 0.25rem; }
+      h2 { font-size: 1.1rem; margin: 1.75rem 0 0.5rem; letter-spacing: -0.01em; }
+      p, li { margin: 0 0 0.6rem; }
+      ul { padding-left: 1.2rem; }
+      a { color: var(--pink-deep); }
+      .updated { color: var(--muted); margin-bottom: 1.25rem; }
+      .summary { background: var(--gold-soft); border-radius: 14px; padding: 0.9rem 1.1rem; }
+      .summary ul { margin: 0.4rem 0 0; }
+      .back { display: inline-block; margin-bottom: 1rem; font-weight: 600; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="back" href="./">&larr; Volver a OinkCoin</a>
+      <p class="updated">Traducción de cortesía. Si hay alguna diferencia, prevalece la <a href="privacy.html">versión en inglés</a>.</p>
+      <h1>Aviso de privacidad</h1>
+      <p class="updated">Última actualización: 24 de octubre de 2026</p>
+
+      <div class="summary">
+        <strong>La versión corta</strong>
+        <ul>
+          <li>OinkCoin solo puede <em>leer</em> los datos de tu banco. Nunca puede mover dinero ni hacer pagos.</li>
+          <li>Nunca vemos tu usuario ni tu contraseña del banco. Inicias sesión en tu banco a través de Plaid.</li>
+          <li>Tus datos de OinkCoin se guardan en tu cuenta para que solo tú los veas, en cualquier dispositivo donde inicies sesión.</li>
+          <li>No vendemos tus datos ni mostramos anuncios.</li>
+          <li>Puedes desconectar tu banco o eliminar tu cuenta en cualquier momento.</li>
+        </ul>
+      </div>
+
+      <h2>Qué datos recopilamos</h2>
+      <ul>
+        <li><strong>Datos de la cuenta:</strong> la dirección de correo electrónico y la contraseña. Las contraseñas
+          las maneja nuestro proveedor de autenticación y solo se guardan de forma cifrada (hash).</li>
+        <li><strong>Tus permisos:</strong> a qué permisos del banco diste tu consentimiento y cuándo.</li>
+        <li><strong>Datos del banco, si conectas un banco:</strong> nombres de las cuentas, los últimos cuatro
+          dígitos de los números de cuenta, tipos de cuenta, saldos actuales y movimientos (fecha, importe,
+          nombre del comercio y categoría).</li>
+        <li><strong>Lo que capturas en la app:</strong> tu compañero, tu presupuesto, tus metas y los gastos o
+          estados de cuenta en CSV que agregues.</li>
+      </ul>
+
+      <h2>Cómo usamos los datos</h2>
+      <p>Solo para que OinkCoin funcione: mostrar tus saldos, clasificar tus gastos por categoría, llevar tu
+        presupuesto, definir el ánimo de tu compañero y enviar alertas de gastos si las activas. No usamos tus
+        datos para publicidad y no los vendemos ni los rentamos a nadie.</p>
+
+      <h2>Conexión con tu banco mediante Plaid</h2>
+      <p>OinkCoin usa <a href="https://plaid.com" target="_blank" rel="noopener">Plaid</a> para conectarse a tu
+        banco. Al conectarte, inicias sesión en tu banco dentro de la ventana de Plaid, y Plaid comparte con
+        OinkCoin los datos de tus cuentas y movimientos según los permisos que elegiste. El tratamiento de tus
+        datos por parte de Plaid se describe en el <a href="https://plaid.com/legal/#end-user-privacy-policy" target="_blank" rel="noopener">Aviso
+        de privacidad para usuarios finales de Plaid</a> (en inglés).</p>
+
+      <h2>Dónde se almacenan los datos</h2>
+      <ul>
+        <li><strong>En nuestro servidor:</strong> tu cuenta, tus permisos y tus datos de OinkCoin
+          (compañero, presupuesto, monedas, movimientos y saldos) para que te sigan en todos tus dispositivos.
+          Las reglas de la base de datos permiten que solo tú leas o cambies tus datos. Si activas el inicio de
+          sesión en dos pasos, no se pueden abrir sin tu código.</li>
+        <li><strong>Llaves de conexión bancaria:</strong> la llave que Plaid nos da por cada banco vinculado se
+          guarda cifrada en nuestro servidor y solo la puede usar el código del servidor, nunca la app.</li>
+        <li><strong>En tu dispositivo:</strong> una copia de tus datos de OinkCoin, para que la app funcione
+          rápido. Usa &ldquo;Cerrar sesión y borrar este dispositivo&rdquo; para eliminarla.</li>
+      </ul>
+
+      <h2>Con quién compartimos los datos</h2>
+      <p>Solo compartimos datos con los servicios que hacen funcionar OinkCoin:</p>
+      <ul>
+        <li><strong>Plaid</strong>, para conectarse a tu banco.</li>
+        <li><strong>Supabase</strong>, que aloja nuestras cuentas, base de datos y código del servidor.</li>
+        <li><strong>GitHub Pages</strong>, que aloja el sitio web de OinkCoin.</li>
+      </ul>
+      <p>También podemos divulgar información si la ley lo exige.</p>
+
+      <h2>Tus opciones</h2>
+      <ul>
+        <li><strong>Cambiar permisos:</strong> Perfil y ajustes &rarr; Administrar permisos del banco.</li>
+        <li><strong>Desconectar tu banco:</strong> Perfil y ajustes &rarr; Desconectar banco. Esto revoca el
+          acceso de OinkCoin a través de Plaid y elimina la llave de conexión.</li>
+        <li><strong>Eliminar todo:</strong> Perfil y ajustes &rarr; Restablecer todo. Esto elimina tu cuenta y
+          todos tus datos de OinkCoin de nuestro servidor, revoca el acceso al banco y limpia ese dispositivo.</li>
+      </ul>
+
+      <h2>Seguridad</h2>
+      <p>Los datos viajan por conexiones cifradas, las llaves de conexión bancaria se guardan cifradas y solo el
+        código de nuestro servidor puede usarlas. Ningún sistema es perfectamente seguro, por lo que se
+        recomienda usar una contraseña segura y única.</p>
+
+      <h2>Menores de edad</h2>
+      <p>OinkCoin no está dirigido a menores de 13 años y no recopilamos a sabiendas su información.</p>
+
+      <h2>Cambios</h2>
+      <p>Si cambiamos este aviso, actualizaremos la fecha que aparece al inicio. Los cambios importantes se
+        mostrarán en la app.</p>
+
+      <h2>Contacto</h2>
+      <p>¿Dudas o solicitudes? <a href="https://github.com/denisseloyizz/TheVibeCoders-OinkCoin/issues" target="_blank" rel="noopener">Abre un issue en GitHub</a>.</p>
+    </main>
+  </body>
+</html>

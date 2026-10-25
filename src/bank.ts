@@ -1,4 +1,5 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
+import { t } from './i18n';
 import { categorize } from './statement';
 import { supabase } from './supabase';
 import type { BankAccount, Category, Expense, Income } from './types';
@@ -45,11 +46,11 @@ export interface SyncResult {
 }
 
 async function call<T>(action: string, body: Record<string, unknown> = {}): Promise<T> {
-  if (!supabase) throw new Error('Bank connection is not set up yet.');
+  if (!supabase) throw new Error(t('Bank connection is not set up yet.'));
   const { data, error } = await supabase.functions.invoke('bank', { body: { action, ...body } });
   if (error) {
     const detail = error instanceof FunctionsHttpError ? await error.context.json().catch(() => null) : null;
-    throw new Error(detail?.error ?? 'Could not reach the bank service. Try again.');
+    throw new Error(detail?.error ?? t('Could not reach the bank service. Try again.'));
   }
   return data as T;
 }
@@ -63,7 +64,7 @@ function loadPlaid(): Promise<void> {
     s.onload = () => resolve();
     s.onerror = () => {
       plaidScript = null;
-      reject(new Error('Could not load the bank connection screen.'));
+      reject(new Error(t('Could not load the bank connection screen.')));
     };
     document.head.append(s);
   });
@@ -103,7 +104,7 @@ export async function resumeBankLink(): Promise<boolean> {
   } catch {
     // Fall through to the error below.
   }
-  if (!token) throw new Error('The bank connection timed out. Try connecting again.');
+  if (!token) throw new Error(t('The bank connection timed out. Try connecting again.'));
   await loadPlaid();
   return openLink(token, received);
 }
@@ -121,7 +122,7 @@ function openLink(token: string, receivedRedirectUri?: string): Promise<boolean>
       onExit: (err) => {
         handler.destroy();
         rememberToken(null);
-        if (err) reject(new Error(err.display_message || err.error_message || 'Could not connect to your bank.'));
+        if (err) reject(new Error(err.display_message || err.error_message || t('Could not connect to your bank.')));
         else resolve(false);
       },
     });

@@ -1,4 +1,6 @@
 import { formatMoney, isWant, type Analysis, type CategoryStat } from './budget';
+import { catLabel } from './labels';
+import { t } from './i18n';
 import { LINE } from './icons';
 import type { Category } from './types';
 import { esc } from './util';
@@ -30,8 +32,8 @@ export function categoryIcon(c: Category): string {
 }
 
 function tag(c: Category): string {
-  if (isWant(c)) return '<span class="tag want">Want</span>';
-  return c === 'Other' ? '' : '<span class="tag need">Need</span>';
+  if (isWant(c)) return `<span class="tag want">${t('Want')}</span>`;
+  return c === 'Other' ? '' : `<span class="tag need">${t('Need')}</span>`;
 }
 
 const R = 136;
@@ -47,7 +49,7 @@ export function renderArc(a: Analysis, budget: number, selected: Category | null
     .map((c) => {
       const len = (c.spent / total) * ARC;
       const state = selected ? (selected === c.category ? ' selected' : ' dim') : '';
-      const seg = `<circle class="arc-seg${state}" data-cat="${esc(c.category)}" cx="150" cy="150" r="${R}" stroke="${CATEGORY_COLORS[c.category]}" stroke-dasharray="${Math.max(len - gap, 1)} ${C}" stroke-dashoffset="${-offset}"><title>${esc(c.category)}: ${formatMoney(c.spent)}</title></circle>`;
+      const seg = `<circle class="arc-seg${state}" data-cat="${esc(c.category)}" cx="150" cy="150" r="${R}" stroke="${CATEGORY_COLORS[c.category]}" stroke-dasharray="${Math.max(len - gap, 1)} ${C}" stroke-dashoffset="${-offset}"><title>${esc(catLabel(c.category))}: ${formatMoney(c.spent)}</title></circle>`;
       offset += len;
       return seg;
     })
@@ -67,12 +69,12 @@ export function renderCategoryDetail(c: CategoryStat, totalSpent: number): strin
   const share = totalSpent > 0 ? Math.round((c.spent / totalSpent) * 100) : 0;
   const fill = c.limit > 0 ? Math.min(100, (c.spent / c.limit) * 100) : c.spent > 0 ? 100 : 0;
   return `<div class="cat-detail">
-    <div class="cat-title">${categoryIcon(c.category)}<strong style="color:${CATEGORY_COLORS[c.category]}">${esc(c.category)}</strong>${tag(c.category)}</div>
-    <p class="amt">${formatMoney(c.spent)} <span>of ${formatMoney(c.limit)}</span></p>
+    <div class="cat-title">${categoryIcon(c.category)}<strong style="color:${CATEGORY_COLORS[c.category]}">${esc(catLabel(c.category))}</strong>${tag(c.category)}</div>
+    <p class="amt">${formatMoney(c.spent)} <span>${t('of {amount}', { amount: formatMoney(c.limit) })}</span></p>
     <div class="bar"><div class="fill ${over ? 'over' : 'ok'}" style="width:${fill}%"></div></div>
     <div class="split">
-      <div><b class="${over ? 'neg' : ''}">${formatMoney(Math.abs(diff))}</b><small>${over ? 'over' : 'under'} budget</small></div>
-      <div><b>${share}%</b><small>of total spending</small></div>
+      <div><b class="${over ? 'neg' : ''}">${formatMoney(Math.abs(diff))}</b><small>${over ? t('over budget') : t('under budget')}</small></div>
+      <div><b>${share}%</b><small>${t('of total spending')}</small></div>
     </div>
   </div>`;
 }
@@ -86,8 +88,8 @@ export function renderCategoryList(a: Analysis, selected: Category): string {
         <button class="cat-row${isSel ? ' selected' : ''}" data-cat="${esc(c.category)}" aria-pressed="${isSel}">
           ${categoryIcon(c.category)}
           <div class="cat-info">
-            <div class="cat-name">${esc(c.category)}${tag(c.category)}</div>
-            <div class="cat-amt">${formatMoney(c.spent)} <span>of ${formatMoney(c.limit)}</span></div>
+            <div class="cat-name">${esc(catLabel(c.category))}${tag(c.category)}</div>
+            <div class="cat-amt">${formatMoney(c.spent)} <span>${t('of {amount}', { amount: formatMoney(c.limit) })}</span></div>
             <div class="bar"><div class="fill ${c.ratio > 1 ? 'over' : 'ok'}" style="width:${fill}%"></div></div>
           </div>
           <span class="chev" aria-hidden="true">${LINE.chevronRight}</span>

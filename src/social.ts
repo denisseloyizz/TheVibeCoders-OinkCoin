@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import { supabase } from './supabase';
 import type { Character, Equipped, Mood } from './types';
 
@@ -30,7 +31,7 @@ export interface FriendsData {
 async function myId(): Promise<string> {
   const { data } = await supabase!.auth.getSession();
   const id = data.session?.user.id;
-  if (!id) throw new Error('Please log in again.');
+  if (!id) throw new Error(t('Please log in again.'));
   return id;
 }
 
@@ -92,7 +93,7 @@ export async function loadFriends(card: BuddyCard): Promise<FriendsData> {
   const toFriend = (fid: string): Friend => {
     const c = cards.get(fid);
     const buddy = c?.buddy && 'character' in c.buddy ? c.buddy : null;
-    return { id: fid, displayName: c?.display_name || (buddy ? `${buddy.name}'s owner` : 'A friend'), buddy };
+    return { id: fid, displayName: c?.display_name || (buddy ? t("{name}'s owner", { name: buddy.name }) : t('A friend')), buddy };
   };
 
   return {
@@ -113,12 +114,12 @@ export async function sendFriendRequest(code: string): Promise<string> {
   fail(error);
   return (
     {
-      pending: 'Request sent! You will be friends once they accept.',
-      accepted: 'You are now friends!',
-      already: 'You are already friends.',
-      self: "That's your own code.",
-      not_found: 'No one has that friend code. Check it and try again.',
-    }[data as string] ?? 'Something went wrong. Try again.'
+      pending: t('Request sent! You will be friends once they accept.'),
+      accepted: t('You are now friends!'),
+      already: t('You are already friends.'),
+      self: t("That's your own code."),
+      not_found: t('No one has that friend code. Check it and try again.'),
+    }[data as string] ?? t('Something went wrong. Try again.')
   );
 }
 
@@ -151,7 +152,7 @@ export async function collectCheers(): Promise<string[]> {
   fail(error);
   if (!data?.length) return [];
   const { data: senders } = await supabase!.from('buddies').select('user_id, display_name, buddy').in('user_id', [...new Set(data.map((c) => c.from_user))]);
-  const names = new Map((senders ?? []).map((s) => [s.user_id, s.display_name || `${(s.buddy as BuddyCard)?.name ?? 'A friend'}'s owner`]));
+  const names = new Map((senders ?? []).map((s) => [s.user_id, s.display_name || ((s.buddy as BuddyCard)?.name ? t("{name}'s owner", { name: (s.buddy as BuddyCard).name }) : t('A friend'))]));
   await supabase!.from('cheers').update({ seen: true }).in('id', data.map((c) => c.id));
-  return data.map((c) => names.get(c.from_user) ?? 'A friend');
+  return data.map((c) => names.get(c.from_user) ?? t('A friend'));
 }

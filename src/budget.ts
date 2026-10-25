@@ -1,3 +1,5 @@
+import { catLabel } from './labels';
+import { t, T } from './i18n';
 import { CATEGORIES, MOODS, type Category, type Expense, type Mood, type Profile } from './types';
 
 const DEFAULT_SHARES: Record<Category, number> = {
@@ -17,14 +19,14 @@ export const NEEDS: Category[] = ['Bills', 'Groceries', 'Transport', 'Health'];
 export const isWant = (c: Category): boolean => WANTS.includes(c);
 
 const TIPS: Record<Category, string> = {
-  Shopping: 'Try a 48-hour rule: wait two days before buying anything non-essential.',
-  'Food & Dining': 'Cook at home a few more nights a week and pack lunch.',
-  Entertainment: 'Look for free events and pause subscriptions you rarely use.',
-  Transport: 'Combine errands, carpool, or try public transit a few days.',
-  Bills: 'Call providers to negotiate rates or switch to a cheaper plan.',
-  Groceries: 'Plan meals, shop with a list, and buy store brands.',
-  Health: 'Check if generic medicine or in-network options can lower costs.',
-  Other: 'Review these purchases - can any be moved into a planned category?',
+  Shopping: T('Try a 48-hour rule: wait two days before buying anything non-essential.'),
+  'Food & Dining': T('Cook at home a few more nights a week and pack lunch.'),
+  Entertainment: T('Look for free events and pause subscriptions you rarely use.'),
+  Transport: T('Combine errands, carpool, or try public transit a few days.'),
+  Bills: T('Call providers to negotiate rates or switch to a cheaper plan.'),
+  Groceries: T('Plan meals, shop with a list, and buy store brands.'),
+  Health: T('Check if generic medicine or in-network options can lower costs.'),
+  Other: T('Review these purchases - can any be moved into a planned category?'),
 };
 
 export interface CategoryStat {
@@ -82,7 +84,7 @@ export function localDateKey(d = new Date()): string {
 }
 
 export function formatMoney(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
 export function analyze(profile: Profile, expenses: Expense[], month = new Date()): Analysis {
@@ -129,7 +131,7 @@ export function analyze(profile: Profile, expenses: Expense[], month = new Date(
   return {
     monthKey,
     spent,
-    remaining: profile.budget - spent,
+    remaining: Math.round((profile.budget - spent) * 100) / 100 + 0, // cents, and +0 turns -0 into 0
     usage: profile.budget > 0 ? spent / profile.budget : 0,
     categories,
     top: categories[0].spent > 0 ? categories[0] : null,
@@ -141,8 +143,8 @@ export function analyze(profile: Profile, expenses: Expense[], month = new Date(
     topNeed,
     reason,
     mood,
-    message: spent === 0 ? `${petName(profile)} is ready! Add your first expense.` : buildMessage(petName(profile), mood, reason, topWant, focusOver, topNeed),
-    tip: tipCategory ? TIPS[tipCategory.category] : null,
+    message: spent === 0 ? t('{name} is ready! Add your first expense.', { name: petName(profile) }) : buildMessage(petName(profile), mood, reason, topWant, focusOver, topNeed),
+    tip: tipCategory ? t(TIPS[tipCategory.category]) : null,
   };
 }
 
@@ -158,40 +160,46 @@ function buildMessage(
   focusOver: CategoryStat | null,
   topNeed: CategoryStat | null,
 ): string {
-  const culprit = topWant?.category ?? 'extras';
-  if (reason === 'needs') return `${name} is a little sad. ${topNeed?.category ?? 'Bills'} cost more than planned.`;
-  if (reason === 'focus' && focusOver) return `${name} is ${mood === 'angry' ? 'angry' : 'sad'}. ${focusOver.category} is over your cut-back limit.`;
+  const culprit = topWant ? catLabel(topWant.category) : t('extras');
+  if (reason === 'needs') return t('{name} is a little sad. {category} cost more than planned.', { name, category: catLabel(topNeed?.category ?? 'Bills') });
+  if (reason === 'focus' && focusOver) {
+    const category = catLabel(focusOver.category);
+    return mood === 'angry'
+      ? t('{name} is angry. {category} is over your cut-back limit.', { name, category })
+      : t('{name} is sad. {category} is over your cut-back limit.', { name, category });
+  }
   switch (mood) {
     case 'happy':
-      return `${name} is happy! You're doing great.`;
+      return t("{name} is happy! You're doing great.", { name });
     case 'okay':
-      return `${name} is okay. Go easy on ${culprit}.`;
+      return t('{name} is okay. Go easy on {culprit}.', { name, culprit });
     case 'sad':
-      return `${name} is sad. Slow down on ${culprit}.`;
+      return t('{name} is sad. Slow down on {culprit}.', { name, culprit });
     case 'angry':
-      return `${name} is angry. You're over budget on ${culprit}.`;
+      return t("{name} is angry. You're over budget on {culprit}.", { name, culprit });
     case 'dead':
-      return `${name} fainted from too much ${culprit}. Spend less to wake ${name} up.`;
+      return t('{name} fainted from too much {culprit}. Spend less to wake {name} up.', { name, culprit });
   }
 }
 
 /** How a finished month went, in the past tense, for the pet history. */
 export function pastMessage(profile: Profile, a: Analysis, monthName: string): string {
   const name = petName(profile);
-  const culprit = a.topWant?.category ?? 'extras';
-  if (a.reason === 'needs') return `${name} was a little sad in ${monthName}. ${a.topNeed?.category ?? 'Bills'} cost more than planned.`;
-  if (a.reason === 'focus') return `${name} was sad in ${monthName}. A cut-back category went over.`;
+  const culprit = a.topWant ? catLabel(a.topWant.category) : t('extras');
+  const month = monthName;
+  if (a.reason === 'needs') return t('{name} was a little sad in {month}. {category} cost more than planned.', { name, month, category: catLabel(a.topNeed?.category ?? 'Bills') });
+  if (a.reason === 'focus') return t('{name} was sad in {month}. A cut-back category went over.', { name, month });
   switch (a.mood) {
     case 'happy':
-      return `${name} had a happy ${monthName}!`;
+      return t('{name} had a happy {month}!', { name, month });
     case 'okay':
-      return `${name} did okay in ${monthName}.`;
+      return t('{name} did okay in {month}.', { name, month });
     case 'sad':
-      return `${name} was sad in ${monthName}. Too much ${culprit}.`;
+      return t('{name} was sad in {month}. Too much {culprit}.', { name, month, culprit });
     case 'angry':
-      return `${name} was angry in ${monthName}. Over budget on ${culprit}.`;
+      return t('{name} was angry in {month}. Over budget on {culprit}.', { name, month, culprit });
     case 'dead':
-      return `${name} fainted in ${monthName} from too much ${culprit}.`;
+      return t('{name} fainted in {month} from too much {culprit}.', { name, month, culprit });
   }
 }
 

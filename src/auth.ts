@@ -1,5 +1,8 @@
+import { bindLangSwitch, langSwitchHtml } from './langswitch';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { t, T } from './i18n';
 import { LINE } from './icons';
+import { privacyPage } from './labels';
 import { brand } from './logo';
 import { authLinkError, openedFromRecoveryLink, supabase } from './supabase';
 import { esc } from './util';
@@ -11,15 +14,15 @@ const ACCOUNT_KEY = 'oinkcoin-account-v1';
 const SESSION_KEY = 'oinkcoin-session-v1';
 const ITERATIONS = 150_000;
 const MIN_PASSWORD = 8;
-const PRIVACY_LINK = '<a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>';
+const privacyLink = () => `<a href="${privacyPage()}" target="_blank" rel="noopener">${t('Privacy Policy')}</a>`;
 
 export type Scope = 'balances' | 'transactions' | 'sync' | 'alerts';
 
 export const SCOPES: { id: Scope; label: string; detail: string; required: boolean }[] = [
-  { id: 'balances', label: 'View account balances', detail: 'See how much is in your checking and savings accounts.', required: true },
-  { id: 'transactions', label: 'View transaction history', detail: 'Read your purchases so your buddy can sort them into categories.', required: true },
-  { id: 'sync', label: 'Refresh automatically', detail: 'Check for new transactions once a day so your budget stays current.', required: false },
-  { id: 'alerts', label: 'Spending alerts', detail: 'Notify you when you are close to a category limit.', required: false },
+  { id: 'balances', label: T('View account balances'), detail: T('See how much is in your checking and savings accounts.'), required: true },
+  { id: 'transactions', label: T('View transaction history'), detail: T('Read your purchases so your buddy can sort them into categories.'), required: true },
+  { id: 'sync', label: T('Refresh automatically'), detail: T('Check for new transactions once a day so your budget stays current.'), required: false },
+  { id: 'alerts', label: T('Spending alerts'), detail: T('Notify you when you are close to a category limit.'), required: false },
 ];
 
 export interface Consent {
@@ -115,7 +118,7 @@ async function refreshTwoFactor(): Promise<void> {
 
 async function verifyCode(factorId: string, code: string): Promise<void> {
   const { error } = await supabase!.auth.mfa.challengeAndVerify({ factorId, code });
-  if (error) throw new Error("That code didn't work. Check your authenticator app and try again.");
+  if (error) throw new Error(t("That code didn't work. Check your authenticator app and try again."));
 }
 
 export async function disableTwoFactor(): Promise<void> {
@@ -141,7 +144,7 @@ function codeForm(app: HTMLElement, submit: (code: string) => Promise<void>): vo
     try {
       await submit(String(new FormData(form).get('code')).trim());
     } catch (err) {
-      msg.textContent = err instanceof Error ? err.message : 'Something went wrong. Try again.';
+      msg.textContent = err instanceof Error ? err.message : t('Something went wrong. Try again.');
       msg.hidden = false;
       button.disabled = false;
     }
@@ -153,14 +156,14 @@ export function renderTwoFactorChallenge(app: HTMLElement, done: () => void): vo
   app.innerHTML = `
     <main class="onboard card auth">
       <div class="onboard-head">${brand()}</div>
-      <h2>Enter your code</h2>
-      <p class="hint">Open your authenticator app and enter the 6-digit code for OinkCoin.</p>
+      <h2>${t('Enter your code')}</h2>
+      <p class="hint">${t('Open your authenticator app and enter the 6-digit code for OinkCoin.')}</p>
       <form id="code-form">
-        <label class="field">Code ${CODE_INPUT}</label>
+        <label class="field">${t('Code')} ${CODE_INPUT}</label>
         <p class="import-msg error" id="code-error" role="alert" hidden></p>
-        <div class="actions"><button type="submit">Verify</button></div>
+        <div class="actions"><button type="submit">${t('Verify')}</button></div>
       </form>
-      <p class="auth-switch"><button type="button" class="link" id="switch-account">Use a different account</button></p>
+      <p class="auth-switch"><button type="button" class="link" id="switch-account">${t('Use a different account')}</button></p>
     </main>`;
   app.querySelector<HTMLInputElement>('input[name="code"]')!.focus();
   app.querySelector('#switch-account')!.addEventListener('click', async () => {
@@ -170,7 +173,7 @@ export function renderTwoFactorChallenge(app: HTMLElement, done: () => void): vo
   codeForm(app, async (code) => {
     const { data, error } = await supabase!.auth.mfa.listFactors();
     const factor = data?.totp[0];
-    if (error || !factor) throw new Error('Could not find your authenticator. Try logging in again.');
+    if (error || !factor) throw new Error(t('Could not find your authenticator. Try logging in again.'));
     await verifyCode(factor.id, code);
     twoFactorPending = false;
     done();
@@ -179,15 +182,15 @@ export function renderTwoFactorChallenge(app: HTMLElement, done: () => void): vo
 
 /** Turns on two-factor: scan a QR code, then confirm with a first code. */
 export async function renderTwoFactorSetup(app: HTMLElement, done: () => void, cancel: () => void): Promise<void> {
-  app.innerHTML = `<main class="onboard card auth"><div class="onboard-head">${brand()}</div><p class="hint">Setting up...</p></main>`;
+  app.innerHTML = `<main class="onboard card auth"><div class="onboard-head">${brand()}</div><p class="hint">${t('Setting up...')}</p></main>`;
   const mfa = supabase!.auth.mfa;
   const fail = (message: string) => {
     app.innerHTML = `
       <main class="onboard card auth">
         <div class="onboard-head">${brand()}</div>
-        <h2>Two-factor sign-in</h2>
+        <h2>${t('Two-factor sign-in')}</h2>
         <p class="import-msg error" role="alert">${esc(message)}</p>
-        <div class="actions"><button type="button" class="secondary" id="cancel">Back</button></div>
+        <div class="actions"><button type="button" class="secondary" id="cancel">${t('Back')}</button></div>
       </main>`;
     app.querySelector('#cancel')!.addEventListener('click', cancel);
   };
@@ -198,23 +201,23 @@ export async function renderTwoFactorSetup(app: HTMLElement, done: () => void, c
     if (f.factor_type === 'totp' && f.status === 'unverified') await mfa.unenroll({ factorId: f.id });
   }
   const { data, error } = await mfa.enroll({ factorType: 'totp', friendlyName: 'OinkCoin' });
-  if (error || !data) return fail(error?.message ?? 'Could not start two-factor setup.');
+  if (error || !data) return fail(error?.message ?? t('Could not start two-factor setup.'));
 
   const qr = data.totp.qr_code;
   const qrSrc = qr.startsWith('data:') ? qr : `data:image/svg+xml;utf-8,${encodeURIComponent(qr)}`;
   app.innerHTML = `
     <main class="onboard card auth two-factor">
       <div class="onboard-head">${brand()}</div>
-      <h2>Turn on two-factor sign-in</h2>
-      <p class="hint">Scan this with an authenticator app like Google Authenticator, Microsoft Authenticator or 1Password.</p>
-      <img class="qr" src="${esc(qrSrc)}" alt="QR code for your authenticator app" width="200" height="200" />
-      <p class="hint">Can't scan it? Enter this key instead:<br /><code class="secret">${esc(data.totp.secret)}</code></p>
+      <h2>${t('Turn on two-factor sign-in')}</h2>
+      <p class="hint">${t('Scan this with an authenticator app like Google Authenticator, Microsoft Authenticator or 1Password.')}</p>
+      <img class="qr" src="${esc(qrSrc)}" alt="${t('QR code for your authenticator app')}" width="200" height="200" />
+      <p class="hint">${t("Can't scan it? Enter this key instead:")}<br /><code class="secret">${esc(data.totp.secret)}</code></p>
       <form id="code-form">
-        <label class="field">Then enter the 6-digit code it shows ${CODE_INPUT}</label>
+        <label class="field">${t('Then enter the 6-digit code it shows')} ${CODE_INPUT}</label>
         <p class="import-msg error" id="code-error" role="alert" hidden></p>
         <div class="actions">
-          <button type="button" class="secondary" id="cancel">Cancel</button>
-          <button type="submit">Turn on</button>
+          <button type="button" class="secondary" id="cancel">${t('Cancel')}</button>
+          <button type="submit">${t('Turn on')}</button>
         </div>
       </form>
     </main>`;
@@ -260,7 +263,7 @@ async function signUp(email: string, password: string): Promise<boolean> {
     return !!data.session;
   }
   const existing = loadLocal();
-  if (existing && existing.email !== email && !confirm('Another account is saved on this device. Replace it?')) {
+  if (existing && existing.email !== email && !confirm(t('Another account is saved on this device. Replace it?'))) {
     throw new Error('');
   }
   const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -274,14 +277,14 @@ async function logIn(email: string, password: string): Promise<void> {
   if (supabase) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error?.code === 'email_not_confirmed') throw new UnconfirmedError();
-    if (error) throw new Error('Email or password is incorrect.');
+    if (error) throw new Error(t('Email or password is incorrect.'));
     user = fromSupabase(data.user);
     await refreshTwoFactor();
     return;
   }
   const local = loadLocal();
   if (!local || local.email !== email || (await hashPassword(password, fromHex(local.salt))) !== local.hash) {
-    throw new Error('Email or password is incorrect.');
+    throw new Error(t('Email or password is incorrect.'));
   }
   localStorage.setItem(SESSION_KEY, email);
   user = { email, consent: local.consent };
@@ -289,7 +292,7 @@ async function logIn(email: string, password: string): Promise<void> {
 
 class UnconfirmedError extends Error {
   constructor() {
-    super('Confirm your email first, then log in. Check your spam folder too.');
+    super(t('Confirm your email first, then log in. Check your spam folder too.'));
   }
 }
 
@@ -301,8 +304,8 @@ const pageUrl = () => location.origin + location.pathname;
 let mode: 'signup' | 'login' | 'forgot' | null = authLinkError ? 'forgot' : null;
 let authMsg = authLinkError
   ? authLinkError === 'otp_expired'
-    ? 'That email link has expired or was already used. Links only work once, so request a new one below.'
-    : 'That email link did not work. Request a new one below.'
+    ? t('That email link has expired or was already used. Links only work once, so request a new one below.')
+    : t('That email link did not work. Request a new one below.')
   : '';
 let authError = !!authLinkError;
 /** Last email typed, so switching screens keeps it and "resend" knows where to send. */
@@ -317,16 +320,16 @@ function renderForgot(app: HTMLElement, done: () => void): void {
   app.innerHTML = `
     <main class="onboard card auth">
       <div class="onboard-head">${brand()}</div>
-      <h2>Reset your password</h2>
-      <p class="hint">Enter your email and we'll send you a link to choose a new password.</p>
+      <h2>${t('Reset your password')}</h2>
+      <p class="hint">${t("Enter your email and we'll send you a link to choose a new password.")}</p>
       <form id="forgot-form" novalidate>
-        <label class="field">Email
+        <label class="field">${t('Email')}
           <input name="email" type="email" autocomplete="email" required value="${esc(lastEmail)}" placeholder="you@example.com" />
         </label>
         ${messageHtml()}
-        <div class="actions"><button type="submit">Send reset link</button></div>
+        <div class="actions"><button type="submit">${t('Send reset link')}</button></div>
       </form>
-      <p class="auth-switch"><button type="button" class="link" id="back-login">Back to log in</button></p>
+      <p class="auth-switch"><button type="button" class="link" id="back-login">${t('Back to log in')}</button></p>
     </main>`;
   app.querySelector('#back-login')!.addEventListener('click', () => {
     mode = 'login';
@@ -339,7 +342,7 @@ function renderForgot(app: HTMLElement, done: () => void): void {
     lastEmail = normalizeEmail(String(new FormData(form).get('email')));
     authError = true;
     if (!isEmail(lastEmail)) {
-      authMsg = 'Enter a valid email address.';
+      authMsg = t('Enter a valid email address.');
       return rerender();
     }
     form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = true;
@@ -347,9 +350,9 @@ function renderForgot(app: HTMLElement, done: () => void): void {
     // Same answer whether or not the account exists, so the form can't be used to look up emails.
     authMsg = error
       ? error.status === 429
-        ? 'Too many emails sent. Wait a few minutes and try again.'
-        : `Could not send the reset email: ${error.message}`
-      : "If there's an account for that email, a reset link is on its way. Check your spam folder too.";
+        ? t('Too many emails sent. Wait a few minutes and try again.')
+        : t('Could not send the reset email: {message}', { message: error.message })
+      : t("If there's an account for that email, a reset link is on its way. Check your spam folder too.");
     authError = !!error;
     rerender();
   });
@@ -361,24 +364,24 @@ export function renderNewPassword(app: HTMLElement, done: () => void): void {
     // The link expired or was already used.
     recovering = false;
     mode = 'forgot';
-    authMsg = 'That reset link has expired. Request a new one.';
+    authMsg = t('That reset link has expired. Request a new one.');
     authError = true;
     return renderAuth(app, done);
   }
   app.innerHTML = `
     <main class="onboard card auth">
       <div class="onboard-head">${brand()}</div>
-      <h2>Choose a new password</h2>
-      <p class="hint">For ${esc(user.email)}</p>
+      <h2>${t('Choose a new password')}</h2>
+      <p class="hint">${esc(t('For {email}', { email: user.email }))}</p>
       <form id="new-password-form" novalidate>
-        <label class="field">New password
+        <label class="field">${t('New password')}
           <input name="password" type="password" autocomplete="new-password" required minlength="${MIN_PASSWORD}" />
         </label>
-        <label class="field">Confirm new password
+        <label class="field">${t('Confirm new password')}
           <input name="confirm" type="password" autocomplete="new-password" required minlength="${MIN_PASSWORD}" />
         </label>
         <p class="import-msg error" id="new-password-error" role="alert" hidden></p>
-        <div class="actions"><button type="submit">Save password</button></div>
+        <div class="actions"><button type="submit">${t('Save password')}</button></div>
       </form>
     </main>`;
   const form = app.querySelector<HTMLFormElement>('#new-password-form')!;
@@ -392,8 +395,8 @@ export function renderNewPassword(app: HTMLElement, done: () => void): void {
     e.preventDefault();
     const data = new FormData(form);
     const password = String(data.get('password'));
-    if (password.length < MIN_PASSWORD) return fail(`Password must be at least ${MIN_PASSWORD} characters.`);
-    if (password !== String(data.get('confirm'))) return fail('Passwords do not match.');
+    if (password.length < MIN_PASSWORD) return fail(t('Password must be at least {n} characters.', { n: MIN_PASSWORD }));
+    if (password !== String(data.get('confirm'))) return fail(t('Passwords do not match.'));
     form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = true;
     const { error } = await supabase!.auth.updateUser({ password });
     if (error) return fail(error.message);
@@ -412,35 +415,37 @@ export function renderAuth(app: HTMLElement, done: () => void): void {
 
   app.innerHTML = `
     <main class="onboard card auth">
+      ${langSwitchHtml(true)}
       <div class="onboard-head">${brand()}</div>
-      <h2>${signup ? 'Create your account' : 'Welcome back'}</h2>
-      <p class="hint">${signup ? 'Sign up to start budgeting with your buddy.' : 'Log in to check on your buddy.'}</p>
+      <h2>${signup ? t('Create your account') : t('Welcome back')}</h2>
+      <p class="hint">${signup ? t('Sign up to start budgeting with your buddy.') : t('Log in to check on your buddy.')}</p>
       <form id="auth-form" novalidate>
-        <label class="field">Email
+        <label class="field">${t('Email')}
           <input name="email" type="email" autocomplete="email" required value="${esc(lastEmail)}" placeholder="you@example.com" />
         </label>
-        <label class="field">Password
+        <label class="field">${t('Password')}
           <input name="password" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" required minlength="${MIN_PASSWORD}" />
         </label>
         ${
           signup
-            ? `<label class="field">Confirm password
+            ? `<label class="field">${t('Confirm password')}
                 <input name="confirm" type="password" autocomplete="new-password" required minlength="${MIN_PASSWORD}" />
               </label>`
             : ''
         }
-        ${supabase ? '<p class="forgot"><button type="button" class="link" id="forgot">Forgot password?</button></p>' : ''}
+        ${supabase ? `<p class="forgot"><button type="button" class="link" id="forgot">${t('Forgot password?')}</button></p>` : ''}
         ${messageHtml()}
-        ${canResend && supabase ? '<p class="forgot"><button type="button" class="link" id="resend">Resend confirmation email</button></p>' : ''}
-        <div class="actions"><button type="submit">${signup ? 'Sign up' : 'Log in'}</button></div>
+        ${canResend && supabase ? `<p class="forgot"><button type="button" class="link" id="resend">${t('Resend confirmation email')}</button></p>` : ''}
+        <div class="actions"><button type="submit">${signup ? t('Sign up') : t('Log in')}</button></div>
       </form>
       <p class="auth-switch">
-        ${signup ? 'Already have an account?' : 'New here?'}
-        <button type="button" class="link" id="switch">${signup ? 'Log in' : 'Create an account'}</button>
+        ${signup ? t('Already have an account?') : t('New here?')}
+        <button type="button" class="link" id="switch">${signup ? t('Log in') : t('Create an account')}</button>
       </p>
-      ${signup ? `<p class="auth-switch legal">By signing up you agree to our ${PRIVACY_LINK}.</p>` : ''}
+      ${signup ? `<p class="auth-switch legal">${t('By signing up you agree to our {link}.', { link: privacyLink() })}</p>` : ''}
     </main>`;
 
+  bindLangSwitch(app);
   const form = app.querySelector<HTMLFormElement>('#auth-form')!;
   const keepEmail = () => (lastEmail = normalizeEmail(String(new FormData(form).get('email'))));
 
@@ -463,9 +468,9 @@ export function renderAuth(app: HTMLElement, done: () => void): void {
     authError = !!error;
     authMsg = error
       ? error.status === 429
-        ? 'Too many emails sent. Wait a few minutes and try again.'
+        ? t('Too many emails sent. Wait a few minutes and try again.')
         : error.message
-      : `Sent another confirmation email to ${lastEmail}. Check your spam folder too.`;
+      : t('Sent another confirmation email to {email}. Check your spam folder too.', { email: lastEmail });
     rerender();
   });
 
@@ -480,21 +485,21 @@ export function renderAuth(app: HTMLElement, done: () => void): void {
       rerender();
     };
 
-    if (!isEmail(email)) return show('Enter a valid email address.');
-    if (password.length < MIN_PASSWORD) return show(`Password must be at least ${MIN_PASSWORD} characters.`);
-    if (signup && password !== String(data.get('confirm'))) return show('Passwords do not match.');
+    if (!isEmail(email)) return show(t('Enter a valid email address.'));
+    if (password.length < MIN_PASSWORD) return show(t('Password must be at least {n} characters.', { n: MIN_PASSWORD }));
+    if (signup && password !== String(data.get('confirm'))) return show(t('Passwords do not match.'));
 
     form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled = true;
     try {
       if (signup && !(await signUp(email, password))) {
         mode = 'login';
         canResend = true;
-        return show('Check your inbox to confirm your email, then log in. Check your spam folder too.', false);
+        return show(t('Check your inbox to confirm your email, then log in. Check your spam folder too.'), false);
       }
       if (!signup) await logIn(email, password);
     } catch (err) {
       canResend = err instanceof UnconfirmedError;
-      return show(err instanceof Error ? err.message : 'Something went wrong. Try again.');
+      return show(err instanceof Error ? err.message : t('Something went wrong. Try again.'));
     }
     mode = null;
     authMsg = '';
@@ -510,36 +515,36 @@ export function renderConsent(app: HTMLElement, current: User, done: () => void,
     <main class="onboard card consent">
       <div class="onboard-head">
         ${brand()}
-        ${cancel ? `<button type="button" class="icon" id="cancel" aria-label="Close">${LINE.close}</button>` : ''}
+        ${cancel ? `<button type="button" class="icon" id="cancel" aria-label="${t('Close')}">${LINE.close}</button>` : ''}
       </div>
-      <h2>Connect your bank</h2>
-      <p class="hint">OinkCoin needs your permission to read your bank account so your buddy can track your budget.</p>
+      <h2>${t('Connect your bank')}</h2>
+      <p class="hint">${t('OinkCoin needs your permission to read your bank account so your buddy can track your budget.')}</p>
       <form id="consent-form">
-        <p class="q">OinkCoin will be able to:</p>
+        <p class="q">${t('OinkCoin will be able to:')}</p>
         <div class="options">
           ${SCOPES.map(
             (s) => `
             <label class="option scope">
               <input type="checkbox" name="scope" value="${s.id}" ${s.required || granted.has(s.id) ? 'checked' : ''} ${s.required ? 'disabled' : ''} />
-              <span><strong>${esc(s.label)}${s.required ? ' <em>Required</em>' : ''}</strong><small>${esc(s.detail)}</small></span>
+              <span><strong>${esc(t(s.label))}${s.required ? ` <em>${t('Required')}</em>` : ''}</strong><small>${esc(t(s.detail))}</small></span>
             </label>`,
           ).join('')}
         </div>
         <div class="never">
-          <strong>OinkCoin will never:</strong>
+          <strong>${t('OinkCoin will never:')}</strong>
           <ul>
-            <li>Move money, make payments or transfers</li>
-            <li>See or store your bank username and password</li>
-            <li>Sell or share your data</li>
+            <li>${t('Move money, make payments or transfers')}</li>
+            <li>${t('See or store your bank username and password')}</li>
+            <li>${t('Sell or share your data')}</li>
           </ul>
         </div>
-        <p class="hint">You can change these permissions or disconnect any time in Profile &amp; Settings. Read our ${PRIVACY_LINK}.</p>
+        <p class="hint">${t('You can change these permissions or disconnect any time in Profile &amp; Settings. Read our {link}.', { link: privacyLink() })}</p>
         <label class="option agree">
           <input type="checkbox" name="agree" required ${current.consent ? 'checked' : ''} />
-          <span>I agree to let OinkCoin access my bank account as described above.</span>
+          <span>${t('I agree to let OinkCoin access my bank account as described above.')}</span>
         </label>
         <p class="import-msg error" id="consent-error" role="alert" hidden></p>
-        <div class="actions"><button type="submit">Agree &amp; continue</button></div>
+        <div class="actions"><button type="submit">${t('Agree &amp; continue')}</button></div>
       </form>
     </main>`;
 
@@ -557,7 +562,7 @@ export function renderConsent(app: HTMLElement, current: User, done: () => void,
       done();
     } catch (err) {
       const msg = form.querySelector<HTMLElement>('#consent-error')!;
-      msg.textContent = err instanceof Error ? err.message : 'Could not save your choices.';
+      msg.textContent = err instanceof Error ? err.message : t('Could not save your choices.');
       msg.hidden = false;
       button.disabled = false;
     }

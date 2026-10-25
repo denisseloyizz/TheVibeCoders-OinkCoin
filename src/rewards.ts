@@ -1,4 +1,5 @@
 import { isWant, localDateKey, WANTS } from './budget';
+import { locale, t } from './i18n';
 import type { AppState, Profile } from './types';
 
 export const COINS_PER_GOAL = 3;
@@ -17,7 +18,7 @@ function weekStart(day: Date): Date {
   return new Date(day.getFullYear(), day.getMonth(), day.getDate() - ((day.getDay() + 6) % 7));
 }
 
-const shortDate = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const shortDate = (d: Date) => d.toLocaleDateString(locale(), { month: 'short', day: 'numeric' });
 
 export function monthlyWantsLimit(profile: Profile): number {
   return WANTS.reduce((s, c) => s + (profile.limits[c] ?? 0), 0);
@@ -63,11 +64,11 @@ export function findNewAwards(state: AppState, today = new Date()): Award[] {
 
   const awards: Award[] = [];
   for (const [wk, wants] of weeks) {
-    if (wk < thisWeek && wants <= weekly) awards.push({ key: `week:${wk}`, label: `Week of ${shortDate(parseDay(wk))}` });
+    if (wk < thisWeek && wants <= weekly) awards.push({ key: `week:${wk}`, label: t('Week of {date}', { date: shortDate(parseDay(wk)) }) });
   }
   for (const [mk, m] of months) {
     if (mk < thisMonth && m.total <= profile.budget && m.wants <= monthlyWants) {
-      awards.push({ key: `month:${mk}`, label: parseDay(`${mk}-01`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) });
+      awards.push({ key: `month:${mk}`, label: parseDay(`${mk}-01`).toLocaleDateString(locale(), { month: 'long', year: 'numeric' }) });
     }
   }
   const seen = new Set(state.rewards);

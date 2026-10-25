@@ -1,10 +1,10 @@
 import { formatMoney, MOOD_STEPS, NEEDS, WANTS, type Analysis } from './budget';
 import { PICK_FOR_GOAL } from './learn';
 import { COINS_PER_GOAL, currentWeekWants } from './rewards';
-import type { AppState, Mood, Profile } from './types';
+import { t } from './i18n';
+import { catLabel, goalLabel, moodLabel } from './labels';
+import type { AppState, Profile } from './types';
 import { esc } from './util';
-
-const MOOD_NAME: Record<Mood, string> = { happy: 'Happy', okay: 'Okay', sad: 'Sad', angry: 'Angry', dead: 'Fainted' };
 
 interface Goal {
   title: string;
@@ -39,47 +39,47 @@ export function renderGoals(state: AppState, profile: Profile, a: Analysis, open
   const name = esc(profile.name);
   const week = currentWeekWants(state);
   const goals: Goal[] = [
-    { title: 'Wants', spent: a.wantsSpent, limit: a.wantsLimit, note: `${esc(WANTS.join(', '))}. This sets ${name}'s mood.` },
+    { title: t('Wants'), spent: a.wantsSpent, limit: a.wantsLimit, note: t("{list}. This sets {name}'s mood.", { list: esc(WANTS.map(catLabel).join(', ')), name }) },
     ...a.categories
       .filter((c) => profile.focus.includes(c.category))
       .map((c) => ({
-        title: `Cut back: ${c.category}`,
+        title: t('Cut back: {category}', { category: catLabel(c.category) }),
         spent: c.spent,
         limit: c.limit,
-        note: `20% less than usual, because you picked it in your goals. Going over makes ${name} one step sadder.`,
+        note: t('20% less than usual, because you picked it in your goals. Going over makes {name} one step sadder.', { name }),
       })),
-    { title: 'Needs', spent: a.needsSpent, limit: a.needsLimit, note: `${esc([...NEEDS, 'Other'].join(', '))}. Going over makes ${name} sad, never worse.` },
-    { title: 'This week', spent: week.spent, limit: week.limit, note: `Wants this week. Stay under to earn <b>+${COINS_PER_GOAL} coins</b> when the week ends.` },
-    { title: 'Whole month', spent: a.spent, limit: profile.budget, note: `Finish under your budget with wants on budget to earn <b>+${COINS_PER_GOAL} coins</b>.` },
+    { title: t('Needs'), spent: a.needsSpent, limit: a.needsLimit, note: t('{list}. Going over makes {name} sad, never worse.', { list: esc([...NEEDS, 'Other' as const].map(catLabel).join(', ')), name }) },
+    { title: t('This week'), spent: week.spent, limit: week.limit, note: t('Wants this week. Stay under to earn <b>+{n} coins</b> when the week ends.', { n: COINS_PER_GOAL }) },
+    { title: t('Whole month'), spent: a.spent, limit: profile.budget, note: t('Finish under your budget with wants on budget to earn <b>+{n} coins</b>.', { n: COINS_PER_GOAL }) },
   ];
   const onTrack = goals.filter((g) => g.spent <= g.limit).length;
 
   const steps = MOOD_STEPS.map((st, i) => {
     const next = MOOD_STEPS[i + 1];
-    const range = next ? (st.from === 0 ? `under ${pct(next.from)}` : `${pct(st.from)} to ${pct(next.from)}`) : `over ${pct(st.from)}`;
-    return `<li><span class="mood-chip mood-${st.mood}"><span class="mood-badge">${MOOD_NAME[st.mood]}</span></span> wants ${range} of budget</li>`;
+    const range = next ? (st.from === 0 ? t('under {pct}', { pct: pct(next.from) }) : t('{from} to {to}', { from: pct(st.from), to: pct(next.from) })) : t('over {pct}', { pct: pct(st.from) });
+    return `<li><span class="mood-chip mood-${st.mood}"><span class="mood-badge">${moodLabel(st.mood)}</span></span> ${t('wants {range} of budget', { range })}</li>`;
   }).join('');
 
   return `
     <details class="card goals fold" id="goals-card" ${open ? 'open' : ''}>
       <summary class="fold-head">
-        <h2>This month's goals</h2>
-        <span class="fold-count ${onTrack === goals.length ? 'pos' : onTrack === 0 ? 'neg' : ''}">${onTrack} of ${goals.length} on track</span>
+        <h2>${t("This month's goals")}</h2>
+        <span class="fold-count ${onTrack === goals.length ? 'pos' : onTrack === 0 ? 'neg' : ''}">${t('{done} of {total} on track', { done: onTrack, total: goals.length })}</span>
       </summary>
       ${goals.map(goalRow).join('')}
 
       <details class="mood-rules">
-        <summary>How ${name}'s mood works</summary>
+        <summary>${t("How {name}'s mood works", { name })}</summary>
         <ul class="mood-steps">${steps}</ul>
         <ul>
-          <li>Only <b>wants</b> can make ${name} faint.</li>
-          <li>Going over a category you chose to cut back on makes ${name} one step sadder (angry at most).</li>
-          <li>Needs over plan make ${name} sad at most. Bills happen.</li>
-          <li>If Hunger, Fun or Love drops under 25%, ${name} feels a bit worse. Feed, play and pet to fix it.</li>
-          <li>A fresh ${name} starts every month. Past months are in Pet History.</li>
+          <li>${t('Only <b>wants</b> can make {name} faint.', { name })}</li>
+          <li>${t('Going over a category you chose to cut back on makes {name} one step sadder (angry at most).', { name })}</li>
+          <li>${t('Needs over plan make {name} sad at most. Bills happen.', { name })}</li>
+          <li>${t('If Hunger, Fun or Love drops under 25%, {name} feels a bit worse. Feed, play and pet to fix it.', { name })}</li>
+          <li>${t('A fresh {name} starts every month. Past months are in Pet History.', { name })}</li>
         </ul>
       </details>
 
-      <p class="goal-main">Your main goal: <b>${esc(profile.goal)}</b>. Try <button class="link" data-view="learn">${esc(PICK_FOR_GOAL[profile.goal])}</button> in Grow Your Money.</p>
+      <p class="goal-main">${t('Your main goal: <b>{goal}</b>. Try <button class="link" data-view="learn">{pick}</button> in Grow Your Money.', { goal: esc(goalLabel(profile.goal)), pick: esc(t(PICK_FOR_GOAL[profile.goal])) })}</p>
     </details>`;
 }

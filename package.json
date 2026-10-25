@@ -1,1 +1,23 @@
-{"type":"module"}
+{
+  "name": "oinkcoin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "esbuild tests/logic.test.ts tests/i18n.test.ts tests/statement_es.test.ts tests/chat_es.test.ts --bundle --platform=node --format=esm --outdir=.test-build --out-extension:.js=.mjs --log-level=warning && node --test .test-build/logic.test.mjs .test-build/i18n.test.mjs .test-build/statement_es.test.mjs .test-build/chat_es.test.mjs"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3",
+    "@supabase/supabase-js": "^2.118.0"
+  }
+}

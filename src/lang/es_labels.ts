@@ -1,0 +1,27 @@
+// Spanish (Mexico) translations for the stored-value labels in labels.ts.
+const es: Record<string, string> = {
+  Shopping: 'Compras',
+  'Food & Dining': 'Comida y restaurantes',
+  Entertainment: 'Entretenimiento',
+  Transport: 'Transporte',
+  Bills: 'Servicios y cuentas',
+  Groceries: 'Súper',
+  Health: 'Salud',
+  Other: 'Otros',
+  'Save more money': 'Ahorrar más dinero',
+  'Stop impulse buying': 'Dejar las compras impulsivas',
+  'Pay off debt': 'Pagar mis deudas',
+  'Just track my spending': 'Solo llevar el control de mis gastos',
+  Happy: 'Feliz',
+  Okay: 'Normal',
+  Sad: 'Triste',
+  Angry: 'Enojado',
+  Fainted: 'Desmayado',
+  Male: 'Hombre',
+  Female: 'Mujer',
+  'Non-binary': 'No binario',
+  Piggy: 'Cochinito',
+  Language: 'Idioma',
+  'OinkCoin - Your Budget Buddy': 'OinkCoin - Tu compañero de presupuesto',
+};
+export default es;

@@ -22,11 +22,13 @@ import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, isOAuthR
 import { analyze, formatMoney, localDateKey, pastMessage, petName, type Analysis } from './budget';
 import { applyAction, careMood, careNote, currentCare, type CareAction } from './care';
 import { buddyPhrase, moneyTier, reply, SUGGESTIONS, type ChatContext, type ChatMessage } from './chat';
+import { catLabel, goalLabel, moodLabel } from './labels';
 import { friendsHtml, myHouseHtml, visitHtml } from './friends';
 import { renderGoals } from './goals';
 import { HOUSE_ITEM_BY_ID } from './house';
 import { ICONS, LINE, line } from './icons';
 import { renderLearn } from './learn';
+import { bindPredict, renderPredict, resetPredict } from './predict';
 import { brand } from './logo';
 import { renderOnboarding } from './onboarding';
 import { renderArc, renderCategoryDetail, renderCategoryList } from './ring';
@@ -51,8 +53,10 @@ import { renderStore } from './store';
 import { tutorialHtml, tutorialLength } from './tutorial';
 import { CATEGORIES, type Care, type Category, type Expense, type Income, type Mood, type NoticeKind, type Profile } from './types';
 import { esc } from './util';
+import { getLang, locale, onLangChange, t, tp, T } from './i18n';
+import { bindLangSwitch, langSwitchHtml } from './langswitch';
 
-type View = 'buddy' | 'chat' | 'history' | 'friends' | 'notifications' | 'report' | 'store' | 'settings' | 'learn';
+type View = 'buddy' | 'chat' | 'predict' | 'history' | 'friends' | 'notifications' | 'report' | 'store' | 'settings' | 'learn';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const state = emptyState();
@@ -86,41 +90,41 @@ let chatLog: ChatMessage[] = [];
 const CHAT_LIMIT = 30;
 let tutorialStep = 0;
 
-const MOOD_LABEL: Record<Mood, string> = { happy: 'Happy', okay: 'Okay', sad: 'Sad', angry: 'Angry', dead: 'Fainted' };
-
 const CHAT_ICON = line('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.4A8 8 0 1 1 21 12z"/><path d="M9 11h6M9 14h3"/>');
 
 const MENU: { view: View; label: string; icon: string }[] = [
-  { view: 'buddy', label: 'Budget Buddy', icon: LINE.pet },
-  { view: 'chat', label: 'Chat with Oink', icon: CHAT_ICON },
-  { view: 'history', label: 'Pet History', icon: line('<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>') },
+  { view: 'buddy', label: T('Budget Buddy'), icon: LINE.pet },
+  { view: 'chat', label: T('Chat with Oink'), icon: CHAT_ICON },
+  { view: 'predict', label: T('Forecast'), icon: line('<path d="M3 17l5-5 4 4 8-9"/><path d="M15 7h5v5"/><path d="M3 21h18"/>') },
+  { view: 'history', label: T('Pet History'), icon: line('<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>') },
   {
     view: 'friends',
-    label: 'Friends & House',
+    label: T('Friends & House'),
     icon: line('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 3-5.5 6.5-5.5s6.5 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.6c2.2.6 3.5 2.4 3.5 5.4"/>'),
   },
-  { view: 'report', label: 'Full Report', icon: line('<path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/>') },
-  { view: 'store', label: 'Store', icon: line('<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>') },
-  { view: 'learn', label: 'Grow Your Money', icon: line('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>') },
-  { view: 'settings', label: 'Profile & Settings', icon: line('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/>') },
+  { view: 'report', label: T('Full Report'), icon: line('<path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/>') },
+  { view: 'store', label: T('Store'), icon: line('<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>') },
+  { view: 'learn', label: T('Grow Your Money'), icon: line('<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>') },
+  { view: 'settings', label: T('Profile & Settings'), icon: line('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/>') },
 ];
 
-const EFFECTS: Record<CareAction, string> = {
-  feed: `<div class="fx-food">${ICONS.cookie}</div><span class="fx-plus">+25 Hunger</span>`,
-  play: `<div class="fx-ball-x"><div class="fx-ball-y">${ICONS.ball}</div></div><span class="fx-plus">+25 Fun</span>`,
-  pet:
-    [-40, 0, 40].map((x, i) => `<span class="fx-heart" style="--x:${x}px;--d:${i * 0.25}s">${ICONS.heart}</span>`).join('') +
-    '<span class="fx-plus">+20 Love</span>',
-};
+const effects = (action: CareAction): string =>
+  ({
+    feed: () => `<div class="fx-food">${ICONS.cookie}</div><span class="fx-plus">${esc(t('+25 Hunger'))}</span>`,
+    play: () => `<div class="fx-ball-x"><div class="fx-ball-y">${ICONS.ball}</div></div><span class="fx-plus">${esc(t('+25 Fun'))}</span>`,
+    pet: () =>
+      [-40, 0, 40].map((x, i) => `<span class="fx-heart" style="--x:${x}px;--d:${i * 0.25}s">${ICONS.heart}</span>`).join('') +
+      `<span class="fx-plus">${esc(t('+20 Love'))}</span>`,
+  })[action]();
 
 const CARE_BUTTONS: { action: CareAction; stat: 'hunger' | 'fun' | 'love'; label: string; icon: string; color: string; ring: string }[] = [
-  { action: 'feed', stat: 'hunger', label: 'Feed', icon: ICONS.cookie, color: '#fff1d6', ring: '#f2b230' },
-  { action: 'play', stat: 'fun', label: 'Play', icon: ICONS.ball, color: '#fde7f0', ring: '#8b5cf6' },
-  { action: 'pet', stat: 'love', label: 'Pet', icon: ICONS.heart, color: '#ffe4ea', ring: '#e5487f' },
+  { action: 'feed', stat: 'hunger', label: T('Feed'), icon: ICONS.cookie, color: '#fff1d6', ring: '#f2b230' },
+  { action: 'play', stat: 'fun', label: T('Play'), icon: ICONS.ball, color: '#fde7f0', ring: '#8b5cf6' },
+  { action: 'pet', stat: 'love', label: T('Pet'), icon: ICONS.heart, color: '#ffe4ea', ring: '#e5487f' },
 ];
 
-const STAT_NAME = { hunger: 'Hunger', fun: 'Fun', love: 'Love' };
-const careLabel = (b: (typeof CARE_BUTTONS)[number], value: number) => `${b.label} (${STAT_NAME[b.stat]} ${value}%)`;
+const STAT_NAME = { hunger: T('Hunger'), fun: T('Fun'), love: T('Love') };
+const careLabel = (b: (typeof CARE_BUTTONS)[number], value: number) => t('{label} ({stat} {value}%)', { label: t(b.label), stat: t(STAT_NAME[b.stat]), value });
 
 const toastQueue: string[] = [];
 let toastShowing = false;
@@ -170,8 +174,8 @@ function collectRewards(): void {
   if (awards.length === 0) return;
   state.coins += awards.length * COINS_PER_GOAL;
   state.rewards.push(...awards.map((a) => a.key));
-  const what = awards.length === 1 ? awards[0].label : `${awards.length} goals`;
-  notify('coins', `Goal met: ${what} · +${awards.length * COINS_PER_GOAL} coins`);
+  const what = awards.length === 1 ? awards[0].label : t('{n} goals', { n: awards.length });
+  notify('coins', t('Goal met: {what} · +{n} coins', { what, n: awards.length * COINS_PER_GOAL }));
 }
 
 function persist(): void {
@@ -180,7 +184,11 @@ function persist(): void {
 }
 
 const DAY = 24 * 60 * 60 * 1000;
-const errorText = (err: unknown) => (err instanceof Error ? err.message : 'Something went wrong. Try again.');
+const errorText = (err: unknown) => (err instanceof Error ? err.message : t('Something went wrong. Try again.'));
+
+/** "A, B and C" in the current language. */
+const joinList = (items: string[]): string =>
+  items.length === 1 ? items[0] : t('{list} and {last}', { list: items.slice(0, -1).join(', '), last: items[items.length - 1] });
 
 /** Spending alerts (an optional bank permission): one pop-up listing categories that newly passed 90% this month. */
 function checkAlerts(): void {
@@ -190,9 +198,9 @@ function checkAlerts(): void {
   if (fresh.length === 0) return;
   // Remember them with the account (older months dropped) so they don't pop up again on every open.
   state.alerts = [...state.alerts.filter((k) => k.startsWith(now.monthKey)), ...fresh.map((c) => `${now.monthKey}:${c.category}`)];
-  const list = fresh.map((c) => `${c.category} ${Math.round(c.ratio * 100)}%`);
-  const joined = list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
-  notify('alert', `Spending alert: ${joined} of this month's limit${fresh.length === 1 ? '' : 's'}.`);
+  const list = fresh.map((c) => `${catLabel(c.category)} ${Math.round(c.ratio * 100)}%`);
+  const joined = joinList(list);
+  notify('alert', fresh.length === 1 ? t("Spending alert: {list} of this month's limit.", { list: joined }) : t("Spending alert: {list} of this month's limits.", { list: joined }));
 }
 
 async function syncNow(quiet: boolean): Promise<void> {
@@ -210,8 +218,8 @@ async function syncNow(quiet: boolean): Promise<void> {
     bankMsg = !r.linked
       ? ''
       : r.ready
-        ? `Synced ${added} new transaction${added === 1 ? '' : 's'}.`
-        : 'Your bank is still preparing your transactions. Try syncing again in a minute.';
+        ? tp('Synced {n} new transaction.', 'Synced {n} new transactions.', added)
+        : t('Your bank is still preparing your transactions. Try syncing again in a minute.');
     if (bankMsg && (!quiet || added)) notify('bank', bankMsg);
     checkAlerts();
   } catch (err) {
@@ -295,8 +303,8 @@ async function checkCheers(): Promise<void> {
     const care = currentCare(state.care);
     state.care = { ...care, love: Math.min(100, care.love + 10 * from.length) };
     const names = [...new Set(from)];
-    const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-    notify('cheer', `${who} cheered for ${state.profile?.name ?? 'your buddy'}! +${10 * from.length} Love`);
+    const who = joinList(names);
+    notify('cheer', t('{who} cheered for {name}! +{n} Love', { who, name: state.profile?.name ?? t('your buddy'), n: 10 * from.length }));
     render();
   } catch (err) {
     console.warn('Could not check cheers:', err);
@@ -323,7 +331,7 @@ function render(): void {
       accountMsg = msg;
       render();
     };
-    void renderTwoFactorSetup(app, () => finish('Two-factor sign-in is on.'), () => finish(''));
+    void renderTwoFactorSetup(app, () => finish(t('Two-factor sign-in is on.')), () => finish(''));
     return;
   }
   if (stateOwner !== user.email) {
@@ -331,6 +339,7 @@ function render(): void {
     stateOwner = user.email;
     chatLog = [];
     bubbleKey = '';
+    resetPredict();
     friendsData = null;
     friendsFailed = false;
     visiting = null;
@@ -345,7 +354,7 @@ function render(): void {
     }
   }
   if (cloudLoading) {
-    app.innerHTML = `<main class="onboard card auth"><div class="onboard-head">${brand()}</div><p class="hint">Loading your buddy...</p></main>`;
+    app.innerHTML = `<main class="onboard card auth"><div class="onboard-head">${brand()}</div><p class="hint">${esc(t('Loading your buddy...'))}</p></main>`;
     return;
   }
   if (!user.consent || managingConsent) {
@@ -404,25 +413,25 @@ function render(): void {
 const isCurrentMonth = (a: Analysis) => a.monthKey === localDateKey().slice(0, 7);
 
 function monthNav(a: Analysis): string {
-  const label = viewMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const label = viewMonth.toLocaleDateString(locale(), { month: 'long', year: 'numeric' });
   return `<div class="month-nav">
-    <button class="icon" id="prev" aria-label="Previous month">${LINE.chevronLeft}</button>
+    <button class="icon" id="prev" aria-label="${esc(t('Previous month'))}">${LINE.chevronLeft}</button>
     <h2>${esc(label)}</h2>
-    <button class="icon" id="next" aria-label="Next month" ${isCurrentMonth(a) ? 'disabled' : ''}>${LINE.chevronRight}</button>
+    <button class="icon" id="next" aria-label="${esc(t('Next month'))}" ${isCurrentMonth(a) ? 'disabled' : ''}>${LINE.chevronRight}</button>
   </div>`;
 }
 
 const monthStart = (offset = 0) => new Date(new Date().getFullYear(), new Date().getMonth() + offset, 1);
-const monthLabel = (d: Date, year = true) => d.toLocaleDateString(undefined, year ? { month: 'long', year: 'numeric' } : { month: 'long' });
+const monthLabel = (d: Date, year = true) => d.toLocaleDateString(locale(), year ? { month: 'long', year: 'numeric' } : { month: 'long' });
 
 /** Each month the buddy starts fresh; before any spending, say so (and remember a rough last month). */
 function freshStartMessage(profile: Profile): string {
   const last = analyze(profile, state.expenses, monthStart(-1));
   const month = monthLabel(monthStart(), false);
   if (last.spent > 0 && (last.mood === 'dead' || last.mood === 'angry')) {
-    return `${petName(profile)} is back! A fresh start for ${month}.`;
+    return t('{name} is back! A fresh start for {month}.', { name: petName(profile), month });
   }
-  return `A fresh ${month} for ${petName(profile)}!`;
+  return t('A fresh {month} for {name}!', { month, name: petName(profile) });
 }
 
 function chatContext(profile: Profile): ChatContext {
@@ -432,7 +441,7 @@ function chatContext(profile: Profile): ChatContext {
 
 /** The bubble keeps its line until the month's money situation or the mood changes. */
 function currentBubble(profile: Profile, a: Analysis, mood: Mood): string {
-  const key = `${moneyTier(a, profile.budget)}:${mood}:${a.monthKey}`;
+  const key = `${moneyTier(a, profile.budget)}:${mood}:${a.monthKey}:${getLang()}`; // the language is part of the key, or a Spanish screen keeps its English phrase
   if (key !== bubbleKey) {
     bubbleKey = key;
     bubbleText = buddyPhrase({ profile, state, a, mood });
@@ -445,11 +454,11 @@ const chatMessageHtml = (m: ChatMessage) => `<p class="msg ${m.from}">${esc(m.te
 function chatHtml(profile: Profile): string {
   return `
     <div class="chat">
-      <div class="chat-log" id="chat-log" aria-live="polite">${chatLog.map(chatMessageHtml).join('')}</div>
-      <div class="chat-chips">${SUGGESTIONS.map((s) => `<button type="button" class="chat-chip" data-ask="${esc(s)}">${esc(s)}</button>`).join('')}</div>
+      <div class="chat-log" id="chat-log" aria-live="polite" data-empty="${esc(t('Ask me about your balance, your spending, or what you would save by cutting back.'))}">${chatLog.map(chatMessageHtml).join('')}</div>
+      <div class="chat-chips">${SUGGESTIONS.map((s) => `<button type="button" class="chat-chip" data-ask="${esc(t(s))}">${esc(t(s))}</button>`).join('')}</div>
       <form class="chat-form" id="chat-form">
-        <input name="q" type="text" maxlength="200" autocomplete="off" placeholder="Ask ${esc(profile.name)} about your money" aria-label="Message ${esc(profile.name)}" />
-        <button type="submit">Send</button>
+        <input name="q" type="text" maxlength="200" autocomplete="off" placeholder="${esc(t('Ask {name} about your money', { name: profile.name }))}" aria-label="${esc(t('Message {name}', { name: profile.name }))}" />
+        <button type="submit">${esc(t('Send'))}</button>
       </form>
     </div>`;
 }
@@ -481,7 +490,7 @@ function chatPageHtml(profile: Profile, a: Analysis, mood: Mood): string {
     <section class="card pet-card chat-page mood-${mood}">
       <div class="oink-bubble" id="bubble" role="status" aria-live="polite">${esc(currentBubble(profile, a, mood))}</div>
       <div class="chat-pet">${renderAvatar(profile.character, mood, state.equipped)}</div>
-      <div class="pet-name"><h2>${esc(profile.name)}</h2><span class="mood-badge">${MOOD_LABEL[mood]}</span></div>
+      <div class="pet-name"><h2>${esc(profile.name)}</h2><span class="mood-badge">${esc(moodLabel(mood))}</span></div>
       ${chatHtml(profile)}
     </section>`;
 }
@@ -498,28 +507,28 @@ function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): str
     <section class="card pet-card mood-${mood}">
       <div class="month-nav">
         <h2>${esc(monthLabel(monthStart()))}</h2>
-        <button class="link" data-view="history">Past months</button>
+        <button class="link" data-view="history">${esc(t('Past months'))}</button>
       </div>
       <p class="speech">${esc(message)}</p>
       <div class="oink-bubble">
         <span class="bubble-text">${esc(currentBubble(profile, view, mood))}</span>
-        <button class="bubble-reply" data-view="chat" aria-label="Reply to ${esc(profile.name)}">${CHAT_ICON}Reply</button>
+        <button class="bubble-reply" data-view="chat" aria-label="${esc(t('Reply to {name}', { name: profile.name }))}">${CHAT_ICON}${esc(t('Reply'))}</button>
       </div>
       <div class="ring-stage">
         ${renderArc(view, profile.budget, selectedCat)}
-        <button class="pet" id="pet" aria-label="Pet ${esc(profile.name)}" ${dead ? 'disabled' : ''}>${renderAvatar(profile.character, mood, state.equipped)}</button>
+        <button class="pet" id="pet" aria-label="${esc(t('Pet {name}', { name: profile.name }))}" ${dead ? 'disabled' : ''}>${renderAvatar(profile.character, mood, state.equipped)}</button>
         <div class="fx" id="fx" aria-hidden="true"></div>
       </div>
       <div class="total">
-        <small>Total ${esc(monthName)} Spending</small>
+        <small>${esc(t('Total {month} Spending', { month: monthName }))}</small>
         <strong>${formatMoney(view.spent)}</strong>
-        <small>of ${formatMoney(profile.budget)} &middot; as of ${esc(asOf.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))}</small>
+        <small>${t('of {budget} &middot; as of {date}', { budget: formatMoney(profile.budget), date: esc(asOf.toLocaleDateString(locale(), { month: 'short', day: 'numeric', year: 'numeric' })) })}</small>
       </div>
       <div class="nw">
-        <div class="need"><small>Needs</small><b>${formatMoney(view.needsSpent)}</b></div>
-        <div class="want"><small>Wants</small><b>${formatMoney(view.wantsSpent)} <span>/ ${formatMoney(view.wantsLimit)}</span></b></div>
+        <div class="need"><small>${esc(t('Needs'))}</small><b>${formatMoney(view.needsSpent)}</b></div>
+        <div class="want"><small>${esc(t('Wants'))}</small><b>${formatMoney(view.wantsSpent)} <span>/ ${formatMoney(view.wantsLimit)}</span></b></div>
       </div>
-      <div class="pet-name"><h2>${esc(profile.name)}</h2><span class="mood-badge">${MOOD_LABEL[mood]}</span></div>
+      <div class="pet-name"><h2>${esc(profile.name)}</h2><span class="mood-badge">${esc(moodLabel(mood))}</span></div>
       ${view.tip ? `<p class="tip">${LINE.bulb}<span>${esc(view.tip)}</span></p>` : ''}
     </section>
 
@@ -531,12 +540,12 @@ function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): str
 
     ${categoriesCard(view, selected.category)}
 
-    <nav class="action-bar" aria-label="Care for your buddy">
+    <nav class="action-bar" aria-label="${esc(t('Care for your buddy'))}">
       ${CARE_BUTTONS.map(
         (b) =>
-          `<button data-action="${b.action}" class="${care[b.stat] < 25 ? 'low' : ''}" style="--c:${b.color};--ring:${b.ring};--v:${care[b.stat]}" aria-label="${careLabel(b, care[b.stat])}" ${dead ? 'disabled' : ''}><span class="bubble">${b.icon}</span><span>${b.label}</span></button>`,
+          `<button data-action="${b.action}" class="${care[b.stat] < 25 ? 'low' : ''}" style="--c:${b.color};--ring:${b.ring};--v:${care[b.stat]}" aria-label="${careLabel(b, care[b.stat])}" ${dead ? 'disabled' : ''}><span class="bubble">${b.icon}</span><span>${esc(t(b.label))}</span></button>`,
       ).join('')}
-      <button data-view="store" class="plain" style="--c:#efe9ff"><span class="bubble">${ICONS.bag}</span><span>Shop</span></button>
+      <button data-view="store" class="plain" style="--c:#efe9ff"><span class="bubble">${ICONS.bag}</span><span>${esc(t('Shop'))}</span></button>
     </nav>`;
 }
 
@@ -557,23 +566,23 @@ function historyHtml(profile: Profile, now: Analysis, mood: Mood): string {
     <li class="mood-${moodNow}${current ? ' current' : ''}">
       <div class="history-pet">${renderAvatar(profile.character, moodNow, state.equipped)}</div>
       <div class="history-body">
-        <div class="history-head"><strong>${esc(current ? 'This month' : monthLabel(month))}</strong><span class="mood-badge">${MOOD_LABEL[moodNow]}</span></div>
+        <div class="history-head"><strong>${esc(current ? t('This month') : monthLabel(month))}</strong><span class="mood-badge">${esc(moodLabel(moodNow))}</span></div>
         <p>${esc(message)}</p>
-        <small>${formatMoney(a.spent)} of ${formatMoney(profile.budget)} spent${current ? ' so far' : ''}</small>
+        <small>${esc(t(current ? '{spent} of {budget} spent so far' : '{spent} of {budget} spent', { spent: formatMoney(a.spent), budget: formatMoney(profile.budget) }))}</small>
       </div>
-      <button class="icon" data-report="${a.monthKey}" aria-label="See ${esc(monthLabel(month))} report">${LINE.chevronRight}</button>
+      <button class="icon" data-report="${a.monthKey}" aria-label="${esc(t('See {month} report', { month: monthLabel(month) }))}">${LINE.chevronRight}</button>
     </li>`;
 
   return `
     <section class="card">
-      <h2>${esc(profile.name)}'s history</h2>
-      <p class="hint">A fresh ${esc(profile.name)} starts every month. Here's how each one went.</p>
+      <h2>${esc(t("{name}'s history", { name: profile.name }))}</h2>
+      <p class="hint">${esc(t("A fresh {name} starts every month. Here's how each one went.", { name: profile.name }))}</p>
       ${
         past.length
           ? `<div class="history-stats">
-              <div><strong>${past.length}</strong><small>month${past.length === 1 ? '' : 's'} tracked</small></div>
-              <div><strong>${happy}</strong><small>happy month${happy === 1 ? '' : 's'}</small></div>
-              <div><strong>${fainted}</strong><small>time${fainted === 1 ? '' : 's'} fainted</small></div>
+              <div><strong>${past.length}</strong><small>${esc(tp('month tracked', 'months tracked', past.length))}</small></div>
+              <div><strong>${happy}</strong><small>${esc(tp('happy month', 'happy months', happy))}</small></div>
+              <div><strong>${fainted}</strong><small>${esc(tp('time fainted', 'times fainted', fainted))}</small></div>
             </div>`
           : ''
       }
@@ -581,7 +590,7 @@ function historyHtml(profile: Profile, now: Analysis, mood: Mood): string {
         ${item(monthStart(), now, mood, now.spent === 0 ? freshStartMessage(profile) : now.message, true)}
         ${past.map((p) => item(p.month, p.a, p.a.mood, pastMessage(profile, p.a, monthLabel(p.month, false)), false)).join('')}
       </ul>
-      ${past.length ? '' : `<p class="empty">No past months yet. Come back next month to see how ${esc(profile.name)} did.</p>`}
+      ${past.length ? '' : `<p class="empty">${esc(t('No past months yet. Come back next month to see how {name} did.', { name: profile.name }))}</p>`}
     </section>`;
 }
 
@@ -592,27 +601,27 @@ const incomeIn = (monthKey: string) => state.income.filter((i) => i.date.startsW
 function cashFlowCard(a: Analysis): string {
   const moneyIn = incomeIn(a.monthKey).reduce((s, i) => s + i.amount, 0);
   const left = moneyIn - a.spent;
-  const summary = moneyIn > 0 ? `${left >= 0 ? '+' : '−'}${wholeDollars(Math.abs(left))} left` : 'Add your income';
+  const summary = moneyIn > 0 ? t('{amount} left', { amount: `${left >= 0 ? '+' : '−'}${wholeDollars(Math.abs(left))}` }) : t('Add your income');
   const hint =
     moneyIn === 0
-      ? 'Add your paychecks or other income to see what you have left over.'
+      ? t('Add your paychecks or other income to see what you have left over.')
       : left >= 0
-        ? `You kept ${Math.round((left / moneyIn) * 100)}% of what came in.`
-        : `You spent ${wholeDollars(-left)} more than came in.`;
+        ? t('You kept {pct}% of what came in.', { pct: Math.round((left / moneyIn) * 100) })
+        : t('You spent {amount} more than came in.', { amount: wholeDollars(-left) });
   return `
     <details class="card fold cash" id="cash-card" ${cashOpen ? 'open' : ''}>
       <summary class="fold-head">
-        <h2>Cash flow</h2>
+        <h2>${esc(t('Cash flow'))}</h2>
         <span class="fold-count ${moneyIn === 0 ? '' : left >= 0 ? 'pos' : 'neg'}">${summary}</span>
       </summary>
       <div class="flow">
-        <div><small>Money in</small><b class="pos">${wholeDollars(moneyIn)}</b></div>
-        <div><small>Money out</small><b class="neg">${wholeDollars(a.spent)}</b></div>
-        <div><small>Left over</small><b class="${left >= 0 ? 'pos' : 'neg'}">${left < 0 ? '−' : ''}${wholeDollars(Math.abs(left))}</b></div>
+        <div><small>${esc(t('Money in'))}</small><b class="pos">${wholeDollars(moneyIn)}</b></div>
+        <div><small>${esc(t('Money out'))}</small><b class="neg">${wholeDollars(a.spent)}</b></div>
+        <div><small>${esc(t('Left over'))}</small><b class="${left >= 0 ? 'pos' : 'neg'}">${left < 0 ? '−' : ''}${wholeDollars(Math.abs(left))}</b></div>
       </div>
       ${moneyIn > 0 ? `<div class="bar"><div class="fill ${a.spent > moneyIn ? 'over' : a.spent > moneyIn * 0.8 ? 'warn' : 'ok'}" style="width:${Math.min(100, Math.round((a.spent / moneyIn) * 100))}%"></div></div>` : ''}
       <p class="hint">${esc(hint)}</p>
-      <button class="secondary" data-view="report">Add money in</button>
+      <button class="secondary" data-view="report">${esc(t('Add money in'))}</button>
     </details>`;
 }
 
@@ -620,13 +629,13 @@ function incomeSection(monthKey: string): string {
   const list = incomeIn(monthKey).sort((x, y) => y.date.localeCompare(x.date));
   return `
     <section class="card">
-      <h2>Money in</h2>
-      <p class="hint">Paychecks and deposits from your bank or statement show up here. Add cash income yourself.</p>
+      <h2>${esc(t('Money in'))}</h2>
+      <p class="hint">${esc(t('Paychecks and deposits from your bank or statement show up here. Add cash income yourself.'))}</p>
       <form id="income-form" class="expense-form">
-        <input name="amount" type="number" min="0.01" step="0.01" placeholder="Amount" aria-label="Amount" required />
-        <input name="note" maxlength="60" placeholder="Paycheck, side job..." aria-label="What it was" />
-        <input name="date" type="date" value="${localDateKey()}" aria-label="Date" required />
-        <button type="submit">Add money in</button>
+        <input name="amount" type="number" min="0.01" step="0.01" placeholder="${esc(t('Amount'))}" aria-label="${esc(t('Amount'))}" required />
+        <input name="note" maxlength="60" placeholder="${esc(t('Paycheck, side job...'))}" aria-label="${esc(t('What it was'))}" />
+        <input name="date" type="date" value="${localDateKey()}" aria-label="${esc(t('Date'))}" required />
+        <button type="submit">${esc(t('Add money in'))}</button>
       </form>
       ${
         list.length
@@ -634,13 +643,13 @@ function incomeSection(monthKey: string): string {
               .map(
                 (i: Income) => `
             <li>
-              <div><strong>${esc(i.note || 'Income')}</strong><br /><small>${esc(i.date)}</small></div>
+              <div><strong>${esc(i.note || t('Income'))}</strong><br /><small>${esc(i.date)}</small></div>
               <span class="pos">+${formatMoney(i.amount)}</span>
-              <button class="icon" data-delete-income="${esc(i.id)}" aria-label="Delete income">&times;</button>
+              <button class="icon" data-delete-income="${esc(i.id)}" aria-label="${esc(t('Delete income'))}">&times;</button>
             </li>`,
               )
               .join('')}</ul>`
-          : '<p class="empty">No money in this month yet.</p>'
+          : `<p class="empty">${esc(t('No money in this month yet.'))}</p>`
       }
     </section>`;
 }
@@ -651,8 +660,8 @@ function categoriesCard(a: Analysis, selected: Category): string {
   return `
     <details class="card fold" id="categories-card" ${categoriesOpen ? 'open' : ''}>
       <summary class="fold-head">
-        <h2>Spending categories</h2>
-        <span class="fold-count ${over ? 'neg' : 'pos'}">${over ? `${over} over limit` : 'All on track'}</span>
+        <h2>${esc(t('Spending categories'))}</h2>
+        <span class="fold-count ${over ? 'neg' : 'pos'}">${esc(over ? t('{n} over limit', { n: over }) : t('All on track'))}</span>
       </summary>
       ${renderCategoryList(a, selected)}
     </details>`;
@@ -668,14 +677,14 @@ function reportHtml(profile: Profile, view: Analysis): string {
     <section class="card">
       ${monthNav(view)}
       <div class="stats">
-        <div><small>Budget</small><strong>${formatMoney(profile.budget)}</strong></div>
-        <div><small>Spent</small><strong>${formatMoney(view.spent)}</strong></div>
-        <div><small>Left</small><strong class="${view.remaining < 0 ? 'neg' : 'pos'}">${formatMoney(view.remaining)}</strong></div>
+        <div><small>${esc(t('Budget'))}</small><strong>${formatMoney(profile.budget)}</strong></div>
+        <div><small>${esc(t('Spent'))}</small><strong>${formatMoney(view.spent)}</strong></div>
+        <div><small>${esc(t('Left'))}</small><strong class="${view.remaining < 0 ? 'neg' : 'pos'}">${formatMoney(view.remaining)}</strong></div>
       </div>
       <div class="bar big"><div class="fill ${view.usage > 1 ? 'over' : 'ok'}" style="width:${usage}%"></div></div>
       <div class="nw">
-        <div class="need"><small>Needs</small><b>${formatMoney(view.needsSpent)}</b></div>
-        <div class="want"><small>Wants</small><b>${formatMoney(view.wantsSpent)} <span>/ ${formatMoney(view.wantsLimit)}</span></b></div>
+        <div class="need"><small>${esc(t('Needs'))}</small><b>${formatMoney(view.needsSpent)}</b></div>
+        <div class="want"><small>${esc(t('Wants'))}</small><b>${formatMoney(view.wantsSpent)} <span>/ ${formatMoney(view.wantsLimit)}</span></b></div>
       </div>
     </section>
 
@@ -684,34 +693,34 @@ function reportHtml(profile: Profile, view: Analysis): string {
     ${incomeSection(view.monthKey)}
 
     <section class="card">
-      <h2>Add expense</h2>
+      <h2>${esc(t('Add expense'))}</h2>
       <form id="expense-form" class="expense-form">
-        <input name="amount" type="number" min="0.01" step="0.01" placeholder="Amount" aria-label="Amount" required />
-        <select name="category" aria-label="Category">${CATEGORIES.map((c) => `<option>${esc(c)}</option>`).join('')}</select>
-        <input name="note" maxlength="60" placeholder="Note (optional)" aria-label="Note" />
-        <input name="date" type="date" value="${localDateKey()}" aria-label="Date" required />
-        <button type="submit">Add</button>
+        <input name="amount" type="number" min="0.01" step="0.01" placeholder="${esc(t('Amount'))}" aria-label="${esc(t('Amount'))}" required />
+        <select name="category" aria-label="${esc(t('Category'))}">${CATEGORIES.map((c) => `<option value="${esc(c)}">${esc(catLabel(c))}</option>`).join('')}</select>
+        <input name="note" maxlength="60" placeholder="${esc(t('Note (optional)'))}" aria-label="${esc(t('Note'))}" />
+        <input name="date" type="date" value="${localDateKey()}" aria-label="${esc(t('Date'))}" required />
+        <button type="submit">${esc(t('Add'))}</button>
       </form>
-      <h3>Import bank statement</h3>
+      <h3>${esc(t('Import bank statement'))}</h3>
       <label class="dropzone small">
         <input type="file" id="statement" accept=".csv,text/csv" />
-        <strong>Upload CSV</strong>
+        <strong>${esc(t('Upload CSV'))}</strong>
       </label>
       ${moneyMsg ? `<p class="import-msg" role="status">${esc(moneyMsg)}</p>` : ''}
     </section>
 
     <section class="card">
-      <h2>Transactions</h2>
+      <h2>${esc(t('Transactions'))}</h2>
       ${
         expenses.length === 0
-          ? '<p class="empty">No expenses this month.</p>'
+          ? `<p class="empty">${esc(t('No expenses this month.'))}</p>`
           : `<ul class="expenses">${expenses
               .map(
                 (e) => `
             <li>
-              <div><strong>${esc(e.category)}</strong>${e.note ? ` - ${esc(e.note)}` : ''}<br /><small>${esc(e.date)}</small></div>
+              <div><strong>${esc(catLabel(e.category))}</strong>${e.note ? ` - ${esc(e.note)}` : ''}<br /><small>${esc(e.date)}</small></div>
               <span>${formatMoney(e.amount)}</span>
-              <button class="icon" data-delete="${esc(e.id)}" aria-label="Delete expense">&times;</button>
+              <button class="icon" data-delete="${esc(e.id)}" aria-label="${esc(t('Delete expense'))}">&times;</button>
             </li>`,
               )
               .join('')}</ul>`
@@ -727,45 +736,45 @@ function settingsHtml(profile: Profile): string {
     <section class="card settings">
       <div class="profile-row">
         ${renderAvatar(profile.character, 'happy', state.equipped)}
-        <div><h2>${esc(profile.name)}</h2><p class="hint">Your budget buddy</p></div>
+        <div><h2>${esc(profile.name)}</h2><p class="hint">${esc(t('Your budget buddy'))}</p></div>
       </div>
       <dl class="facts">
-        <div><dt>Monthly budget</dt><dd>${formatMoney(profile.budget)}</dd></div>
-        <div><dt>Main goal</dt><dd>${esc(profile.goal)}</dd></div>
-        <div><dt>Cutting back on</dt><dd>${profile.focus.length ? esc(profile.focus.join(', ')) : 'Nothing yet'}</dd></div>
-        <div><dt>Coins</dt><dd>${state.coins}</dd></div>
-        <div><dt>Transactions saved</dt><dd>${state.expenses.length}</dd></div>
+        <div><dt>${esc(t('Monthly budget'))}</dt><dd>${formatMoney(profile.budget)}</dd></div>
+        <div><dt>${esc(t('Main goal'))}</dt><dd>${esc(goalLabel(profile.goal))}</dd></div>
+        <div><dt>${esc(t('Cutting back on'))}</dt><dd>${profile.focus.length ? esc(profile.focus.map(catLabel).join(', ')) : esc(t('Nothing yet'))}</dd></div>
+        <div><dt>${esc(t('Coins'))}</dt><dd>${state.coins}</dd></div>
+        <div><dt>${esc(t('Transactions saved'))}</dt><dd>${state.expenses.length}</dd></div>
       </dl>
-      <button id="edit">Edit buddy, budget &amp; goals</button>
-      <button id="restart-tutorial" class="secondary">Take the quick tour</button>
+      <button id="edit">${t('Edit buddy, budget &amp; goals')}</button>
+      <button id="restart-tutorial" class="secondary">${esc(t('Take the quick tour'))}</button>
     </section>
 
     <section class="card settings">
-      <h2>Account</h2>
+      <h2>${esc(t('Account'))}</h2>
       <dl class="facts">
-        <div><dt>Email</dt><dd>${esc(user?.email ?? '')}</dd></div>
-        <div><dt>Bank permissions</dt><dd>${esc(granted.map((s) => s.label).join(', '))}</dd></div>
-        ${twoFactor === null ? '' : `<div><dt>Two-factor sign-in</dt><dd>${twoFactor ? 'On' : 'Off'}</dd></div>`}
+        <div><dt>${esc(t('Email'))}</dt><dd>${esc(user?.email ?? '')}</dd></div>
+        <div><dt>${esc(t('Bank permissions'))}</dt><dd>${esc(granted.map((s) => t(s.label)).join(', '))}</dd></div>
+        ${twoFactor === null ? '' : `<div><dt>${esc(t('Two-factor sign-in'))}</dt><dd>${esc(twoFactor ? t('On') : t('Off'))}</dd></div>`}
       </dl>
-      ${twoFactor === false ? '<p class="hint">Turn on two-factor sign-in so a stolen password alone can&#39;t open your bank data.</p>' : ''}
+      ${twoFactor === false ? `<p class="hint">${t("Turn on two-factor sign-in so a stolen password alone can&#39;t open your bank data.")}</p>` : ''}
       ${accountMsg ? `<p class="import-msg" role="status">${esc(accountMsg)}</p>` : ''}
-      ${twoFactor === null ? '' : `<button id="two-factor" class="${twoFactor ? 'secondary' : ''}">${twoFactor ? 'Turn off two-factor' : 'Turn on two-factor'}</button>`}
-      <button id="permissions" class="secondary">Manage bank permissions</button>
-      <button id="logout" class="secondary">Log out</button>
-      <button id="logout-clear" class="secondary">Log out &amp; clear this device</button>
+      ${twoFactor === null ? '' : `<button id="two-factor" class="${twoFactor ? 'secondary' : ''}">${esc(twoFactor ? t('Turn off two-factor') : t('Turn on two-factor'))}</button>`}
+      <button id="permissions" class="secondary">${esc(t('Manage bank permissions'))}</button>
+      <button id="logout" class="secondary">${esc(t('Log out'))}</button>
+      <button id="logout-clear" class="secondary">${t('Log out &amp; clear this device')}</button>
       <p class="hint small-print">${
         cloudEnabled
-          ? 'Your buddy, coins and transactions are backed up to your account. Clearing only removes the copy on this device.'
-          : 'Your buddy, coins and transactions are saved on this device only. Clearing removes them for good.'
+          ? esc(t('Your buddy, coins and transactions are backed up to your account. Clearing only removes the copy on this device.'))
+          : esc(t('Your buddy, coins and transactions are saved on this device only. Clearing removes them for good.'))
       }</p>
     </section>
 
     ${bankHtml()}
 
     <section class="card">
-      <h2>Reset</h2>
-      <p class="hint">Delete your account, buddy, budget and all transactions${bankEnabled ? ', and disconnect your bank' : ' from this device'}.</p>
-      <button id="reset" class="danger">Reset everything</button>
+      <h2>${esc(t('Reset'))}</h2>
+      <p class="hint">${esc(bankEnabled ? t('Delete your account, buddy, budget and all transactions, and disconnect your bank.') : t('Delete your account, buddy, budget and all transactions from this device.'))}</p>
+      <button id="reset" class="danger">${esc(t('Reset everything'))}</button>
     </section>`;
 }
 
@@ -775,7 +784,7 @@ function bankHtml(): string {
   const busy = bankBusy ? 'disabled' : '';
   return `
     <section class="card settings">
-      <h2>Linked bank</h2>
+      <h2>${esc(t('Linked bank'))}</h2>
       ${
         b
           ? `<ul class="bank-accounts">${b.accounts
@@ -784,34 +793,34 @@ function bankHtml(): string {
                 <span>${a.balance === null ? '-' : formatMoney(a.balance)}</span></li>`,
               )
               .join('')}</ul>
-            <p class="hint">Last synced ${esc(new Date(b.syncedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</p>`
-          : '<p class="hint">No bank connected yet. Connect one to import your spending automatically.</p>'
+            <p class="hint">${esc(t('Last synced {time}', { time: new Date(b.syncedAt).toLocaleString(locale(), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) }))}</p>`
+          : `<p class="hint">${esc(t('No bank connected yet. Connect one to import your spending automatically.'))}</p>`
       }
       ${bankMsg ? `<p class="import-msg" role="status">${esc(bankMsg)}</p>` : ''}
       ${
         b
-          ? `<button id="sync-bank" ${busy}>${bankBusy ? 'Syncing...' : 'Sync now'}</button>
-            <button id="link-bank" class="secondary" ${busy}>Connect another bank</button>
-            <button id="unlink-bank" class="danger" ${busy}>Disconnect bank</button>`
-          : `<button id="link-bank" ${busy}>${bankBusy ? 'Connecting...' : 'Connect bank'}</button>`
+          ? `<button id="sync-bank" ${busy}>${esc(bankBusy ? t('Syncing...') : t('Sync now'))}</button>
+            <button id="link-bank" class="secondary" ${busy}>${esc(t('Connect another bank'))}</button>
+            <button id="unlink-bank" class="danger" ${busy}>${esc(t('Disconnect bank'))}</button>`
+          : `<button id="link-bank" ${busy}>${esc(bankBusy ? t('Connecting...') : t('Connect bank'))}</button>`
       }
     </section>`;
 }
 
 function timeAgo(at: number): string {
   const mins = Math.round((Date.now() - at) / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins} min ago`;
-  if (mins < 24 * 60) return `${Math.round(mins / 60)} h ago`;
-  return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (mins < 1) return t('Just now');
+  if (mins < 60) return t('{n} min ago', { n: mins });
+  if (mins < 24 * 60) return t('{n} h ago', { n: Math.round(mins / 60) });
+  return new Date(at).toLocaleDateString(locale(), { month: 'short', day: 'numeric' });
 }
 
 function notificationsHtml(): string {
   return `
     <section class="card">
       <div class="notices-head">
-        <h2>Notifications</h2>
-        ${state.notices.length ? '<button class="link" id="clear-notices">Clear all</button>' : ''}
+        <h2>${esc(t('Notifications'))}</h2>
+        ${state.notices.length ? `<button class="link" id="clear-notices">${esc(t('Clear all'))}</button>` : ''}
       </div>
       ${
         state.notices.length
@@ -823,7 +832,7 @@ function notificationsHtml(): string {
                 </li>`,
               )
               .join('')}</ul>`
-          : '<p class="empty">Nothing yet. Coin rewards, spending alerts, cheers from friends and bank syncs show up here.</p>'
+          : `<p class="empty">${esc(t('Nothing yet. Coin rewards, spending alerts, cheers from friends and bank syncs show up here.'))}</p>`
       }
     </section>`;
 }
@@ -831,15 +840,16 @@ function notificationsHtml(): string {
 function drawerHtml(profile: Profile, mood: Mood): string {
   return `
     <div class="scrim" id="scrim"></div>
-    <aside class="drawer" id="drawer" aria-label="Menu">
-      <div class="drawer-head">${brand()}<button class="icon" id="close-menu" aria-label="Close menu">${LINE.close}</button></div>
+    <aside class="drawer" id="drawer" aria-label="${esc(t('Menu'))}">
+      <div class="drawer-head">${brand()}<button class="icon" id="close-menu" aria-label="${esc(t('Close menu'))}">${LINE.close}</button></div>
+      ${langSwitchHtml()}
       <div class="drawer-profile">
         ${renderAvatar(profile.character, mood, state.equipped)}
-        <div><strong>${esc(profile.name)}</strong><small>${MOOD_LABEL[mood]}</small></div>
+        <div><strong>${esc(profile.name)}</strong><small>${esc(moodLabel(mood))}</small></div>
       </div>
       <nav>
         ${MENU.map(
-          (m) => `<button data-view="${m.view}" ${m.view === view ? 'aria-current="page"' : ''}>${m.icon}<span>${m.label}</span></button>`,
+          (m) => `<button data-view="${m.view}" ${m.view === view ? 'aria-current="page"' : ''}>${m.icon}<span>${esc(t(m.label))}</span></button>`,
         ).join('')}
       </nav>
     </aside>`;
@@ -863,11 +873,12 @@ function renderDashboard(profile: Profile): void {
   const body = {
     buddy: () => homeHtml(profile, now, care, mood),
     chat: () => chatPageHtml(profile, now, mood),
+    predict: () => renderPredict(state, profile),
     history: () => historyHtml(profile, now, mood),
     notifications: () => notificationsHtml(),
     friends: () => {
       if (!socialEnabled) {
-        return `${myHouseHtml(state, profile, mood)}<section class="card"><h2>Friends</h2><p class="hint">Friends need an online account. This copy of OinkCoin isn't connected to one.</p></section>`;
+        return `${myHouseHtml(state, profile, mood)}<section class="card"><h2>${esc(t('Friends'))}</h2><p class="hint">${esc(t("Friends need an online account. This copy of OinkCoin isn't connected to one."))}</p></section>`;
       }
       const friend = visiting ? friendsData?.friends.find((f) => f.id === visiting) : undefined;
       if (friend) return visitHtml(friend, friendsMsg);
@@ -886,17 +897,17 @@ function renderDashboard(profile: Profile): void {
   setDrawer(false);
   app.innerHTML = `
     <header class="topbar">
-      <button class="menu-btn" id="menu" aria-label="Open menu" aria-expanded="false" aria-controls="drawer"><span></span><span></span><span></span></button>
+      <button class="menu-btn" id="menu" aria-label="${esc(t('Open menu'))}" aria-expanded="false" aria-controls="drawer"><span></span><span></span><span></span></button>
       ${brand()}
       <div class="top-actions">
-        <button class="bell${unread ? ' has-unread' : ''}" data-view="notifications" aria-label="Notifications${unread ? `, ${unread} unread` : ''}">
+        <button class="bell${unread ? ' has-unread' : ''}" data-view="notifications" aria-label="${esc(unread ? t('Notifications, {n} unread', { n: unread }) : t('Notifications'))}">
           ${LINE.bell}${unread ? `<span class="badge">${unread > 9 ? '9+' : unread}</span>` : ''}
         </button>
-        <button class="coin-chip" data-view="store" aria-label="${state.coins} coins, open store">${ICONS.coin}<b>${state.coins}</b></button>
+        <button class="coin-chip" data-view="store" aria-label="${esc(t('{n} coins, open store', { n: state.coins }))}">${ICONS.coin}<b>${state.coins}</b></button>
       </div>
     </header>
     ${drawerHtml(profile, mood)}
-    <main class="stack">${body}</main>
+    <main class="stack${view === 'chat' ? ' chat-mode' : ''}">${body}</main>
     ${state.tutorialSeen ? '' : tutorialHtml(tutorialStep)}`;
 
   // Opening the list marks everything read (shown highlighted this once).
@@ -941,6 +952,7 @@ function renderDashboard(profile: Profile): void {
     renderDashboard(profile);
   });
 
+  bindLangSwitch(app);
   app.querySelector('#menu')!.addEventListener('click', () => setDrawer(true));
   app.querySelector('#close-menu')!.addEventListener('click', () => setDrawer(false));
   app.querySelector('#scrim')!.addEventListener('click', () => setDrawer(false));
@@ -974,9 +986,9 @@ function renderDashboard(profile: Profile): void {
     const btn = e.currentTarget as HTMLButtonElement;
     try {
       await navigator.clipboard.writeText(btn.dataset.code!);
-      btn.textContent = 'Copied!';
+      btn.textContent = t('Copied!');
     } catch {
-      btn.textContent = 'Select and copy it';
+      btn.textContent = t('Select and copy it');
     }
   });
   const addForm = app.querySelector<HTMLFormElement>('#add-friend');
@@ -995,7 +1007,7 @@ function renderDashboard(profile: Profile): void {
   app.querySelector<HTMLInputElement>('#display-name')?.addEventListener('change', async (e) => {
     try {
       await setDisplayName((e.target as HTMLInputElement).value);
-      friendsMsg = 'Saved. Friends will see this name.';
+      friendsMsg = t('Saved. Friends will see this name.');
     } catch (err) {
       friendsMsg = errorText(err);
     }
@@ -1014,8 +1026,8 @@ function renderDashboard(profile: Profile): void {
         reloadFriends();
       }),
     );
-  friendAction('accept', acceptFriend, 'You are now friends!');
-  friendAction('decline', removeFriend, 'Request declined.');
+  friendAction('accept', acceptFriend, t('You are now friends!'));
+  friendAction('decline', removeFriend, t('Request declined.'));
   app.querySelectorAll<HTMLButtonElement>('[data-visit]').forEach((b) =>
     b.addEventListener('click', () => {
       visiting = b.dataset.visit!;
@@ -1034,19 +1046,19 @@ function renderDashboard(profile: Profile): void {
     btn.disabled = true;
     try {
       friendsMsg = (await sendCheer(btn.dataset.cheer!))
-        ? 'Cheer sent! They get +10 Love next time they open OinkCoin.'
-        : 'You already cheered for them today. Come back tomorrow!';
+        ? t('Cheer sent! They get +10 Love next time they open OinkCoin.')
+        : t('You already cheered for them today. Come back tomorrow!');
     } catch (err) {
       friendsMsg = errorText(err);
     }
     render();
   });
   app.querySelector<HTMLButtonElement>('#unfriend')?.addEventListener('click', async (e) => {
-    if (!confirm('Remove this friend? You can add each other again with your codes.')) return;
+    if (!confirm(t('Remove this friend? You can add each other again with your codes.'))) return;
     try {
       await removeFriend((e.currentTarget as HTMLButtonElement).dataset.unfriend!);
       visiting = null;
-      friendsMsg = 'Friend removed.';
+      friendsMsg = t('Friend removed.');
     } catch (err) {
       friendsMsg = errorText(err);
     }
@@ -1067,8 +1079,8 @@ function renderDashboard(profile: Profile): void {
   });
   app.querySelector('#logout-clear')?.addEventListener('click', async () => {
     const warning = cloudEnabled
-      ? 'Log out and remove your data from this device? It stays backed up to your account.'
-      : 'Log out and remove your buddy, coins and transactions from this device? This cannot be undone.';
+      ? t('Log out and remove your data from this device? It stays backed up to your account.')
+      : t('Log out and remove your buddy, coins and transactions from this device? This cannot be undone.');
     if (!confirm(warning)) return;
     await flushCloudSave();
     clearState();
@@ -1089,10 +1101,10 @@ function renderDashboard(profile: Profile): void {
       settingUpTwoFactor = true;
       return render();
     }
-    if (!confirm('Turn off two-factor sign-in? Your account will be protected by your password only.')) return;
+    if (!confirm(t('Turn off two-factor sign-in? Your account will be protected by your password only.'))) return;
     try {
       await disableTwoFactor();
-      accountMsg = 'Two-factor sign-in is off.';
+      accountMsg = t('Two-factor sign-in is off.');
     } catch (err) {
       accountMsg = errorText(err);
     }
@@ -1101,11 +1113,11 @@ function renderDashboard(profile: Profile): void {
   app.querySelector('#link-bank')?.addEventListener('click', () => void linkBank());
   app.querySelector('#sync-bank')?.addEventListener('click', () => void syncNow(false));
   app.querySelector('#unlink-bank')?.addEventListener('click', async () => {
-    if (!confirm('Disconnect your bank? Transactions already imported stay in OinkCoin.')) return;
+    if (!confirm(t('Disconnect your bank? Transactions already imported stay in OinkCoin.'))) return;
     try {
       await disconnectBank();
       state.bank = null;
-      bankMsg = 'Bank disconnected. OinkCoin can no longer see your accounts.';
+      bankMsg = t('Bank disconnected. OinkCoin can no longer see your accounts.');
       saveState(state);
     } catch (err) {
       bankMsg = errorText(err);
@@ -1113,7 +1125,7 @@ function renderDashboard(profile: Profile): void {
     render();
   });
   app.querySelector('#reset')?.addEventListener('click', async () => {
-    if (!confirm('Delete your account, buddy and all your data? This cannot be undone.')) return;
+    if (!confirm(t('Delete your account, buddy and all your data? This cannot be undone.'))) return;
     if (bankEnabled) {
       try {
         await deleteServerAccount();
@@ -1140,7 +1152,7 @@ function renderDashboard(profile: Profile): void {
       state.coins -= item.price;
       state.owned.push(item.id);
       state.equipped[item.slot] = item.id;
-      showToast(`${ICONS.bag}<span>${esc(item.name)} is yours!</span>`);
+      showToast(`${ICONS.bag}<span>${esc(t('{item} is yours!', { item: t(item.name) }))}</span>`);
       persist();
     }),
   );
@@ -1151,7 +1163,7 @@ function renderDashboard(profile: Profile): void {
       state.coins -= item.price;
       state.owned.push(item.id);
       state.house[item.slot] = item.id;
-      showToast(`${ICONS.bag}<span>${esc(item.name)} is in your house!</span>`);
+      showToast(`${ICONS.bag}<span>${esc(t('{item} is in your house!', { item: t(item.name) }))}</span>`);
       persist();
     }),
   );
@@ -1209,6 +1221,8 @@ function renderDashboard(profile: Profile): void {
   );
   app.querySelector('#pet')?.addEventListener('click', () => doAction(profile, 'pet'));
 
+  if (view === 'predict') bindPredict(app, state, profile);
+
   // Chat with the buddy
   const chatForm = app.querySelector<HTMLFormElement>('#chat-form');
   chatForm?.addEventListener('submit', (e) => {
@@ -1252,9 +1266,12 @@ function renderDashboard(profile: Profile): void {
       state.expenses = mergeExpenses(state.expenses, incoming.expenses);
       state.income = mergeIncome(state.income, incoming.income);
       const deposits = state.income.length - beforeIn;
-      moneyMsg = `Imported ${state.expenses.length - before} new purchases${deposits ? ` and ${deposits} deposit${deposits === 1 ? '' : 's'}` : ''}.`;
+      const bought = state.expenses.length - before;
+      moneyMsg = deposits
+        ? tp('Imported {p} new purchases and {n} deposit.', 'Imported {p} new purchases and {n} deposits.', deposits, { p: bought })
+        : t('Imported {p} new purchases.', { p: bought });
     } catch (err) {
-      moneyMsg = err instanceof Error ? err.message : 'Could not read that file.';
+      moneyMsg = err instanceof Error ? err.message : t('Could not read that file.');
     }
     persist();
   });
@@ -1304,7 +1321,7 @@ function doAction(profile: Profile, action: CareAction): void {
   if (!pet || !fx) return;
   pet.innerHTML = renderAvatar(profile.character, 'happy', state.equipped);
   pet.classList.add('reacting');
-  fx.innerHTML = EFFECTS[action];
+  fx.innerHTML = effects(action);
 
   clearTimeout(reactTimer);
   reactTimer = window.setTimeout(render, 2200);
@@ -1338,6 +1355,17 @@ if (new URLSearchParams(location.search).has('v')) history.replaceState(null, ''
 void checkForUpdate();
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') void checkForUpdate();
+});
+
+// Changing the language redraws whatever is on screen, and keeps the menu open so the change is visible.
+onLangChange(() => {
+  document.title = t('OinkCoin - Your Budget Buddy');
+  // Chat lines and the bubble are saved as text in one language, so start them over in the new one.
+  chatLog = [];
+  bubbleKey = '';
+  const menuWasOpen = document.body.classList.contains('drawer-open');
+  render();
+  if (menuWasOpen) setDrawer(true);
 });
 
 initAuth(render).then(() => {

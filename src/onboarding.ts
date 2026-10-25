@@ -1,6 +1,8 @@
 import { CHARACTERS, renderAvatar } from './avatar';
 import { formatMoney, isWant, roundBudget, spendingHistory, suggestedLimits, type SpendingHistory } from './budget';
+import { t, T, tp } from './i18n';
 import { LINE } from './icons';
+import { catLabel, charLabel, goalLabel } from './labels';
 import { brand } from './logo';
 import { mergeExpenses, mergeIncome, readStatementFile } from './statement';
 import { CATEGORIES, GOALS, type AppState, type Category, type Character, type Expense, type Goal, type Income } from './types';
@@ -21,7 +23,7 @@ interface Draft {
   goal: Goal;
 }
 
-const STEPS = ['Buddy', 'Spending', 'Budget', 'Goals'];
+const STEPS = [T('Buddy'), T('Spending'), T('Budget'), T('Goals')];
 const SPENDING = 1;
 const BUDGET = 2;
 const FOCUSABLE: Category[] = CATEGORIES.filter((c) => c !== 'Bills');
@@ -55,33 +57,33 @@ function spendingStep(d: Draft, state: AppState, bank: BankOption | null): strin
   const linked = state.bank;
   const done = linked || d.imported.length > 0;
   return `
-        <h2>How should ${esc(d.name || 'your buddy')} see your spending?</h2>
-        <p class="hint">Pick one. You can always add more later.</p>
+        <h2>${esc(t('How should {name} see your spending?', { name: d.name || t('your buddy') }))}</h2>
+        <p class="hint">${t('Pick one. You can always add more later.')}</p>
         ${
           linked
-            ? `<p class="import-msg" role="status">Bank connected: ${esc(linked.accounts.map((a) => a.name + (a.mask ? ` ··${a.mask}` : '')).join(', ') || 'your accounts')}.</p>`
+            ? `<p class="import-msg" role="status">${esc(t('Bank connected: {accounts}.', { accounts: linked.accounts.map((a) => a.name + (a.mask ? ` ··${a.mask}` : '')).join(', ') || t('your accounts') }))}</p>`
             : ''
         }
         <div class="sources">
           ${
             bank && !linked
               ? `<button type="button" class="source" id="link-bank" ${bank.busy ? 'disabled' : ''}>
-                  <strong>${bank.busy ? 'Connecting...' : 'Link your bank'}</strong>
-                  <small>Imports transactions automatically and keeps them up to date. Read-only: OinkCoin can never move money.</small>
+                  <strong>${bank.busy ? t('Connecting...') : t('Link your bank')}</strong>
+                  <small>${t('Imports transactions automatically and keeps them up to date. Read-only: OinkCoin can never move money.')}</small>
                 </button>`
               : ''
           }
           <label class="source">
             <input type="file" id="statement" accept=".csv,text/csv" />
-            <strong>${d.imported.length ? 'Upload another statement' : 'Upload a bank statement'}</strong>
-            <small>A CSV file from your bank (for example Bank of America: Activity &gt; Download &gt; Microsoft Excel). Stays private.</small>
+            <strong>${d.imported.length ? t('Upload another statement') : t('Upload a bank statement')}</strong>
+            <small>${t('A CSV file from your bank (for example Bank of America: Activity &gt; Download &gt; Microsoft Excel). Stays private.')}</small>
           </label>
           ${
             done
               ? ''
               : `<button type="button" class="source" id="use-cash">
-                  <strong>Skip, I use cash</strong>
-                  <small>Add expenses by hand as you spend.</small>
+                  <strong>${t('Skip, I use cash')}</strong>
+                  <small>${t('Add expenses by hand as you spend.')}</small>
                 </button>`
           }
         </div>
@@ -98,25 +100,25 @@ function limitPreview(budget: number, focus: Category[], history: SpendingHistor
     .sort((a, b) => b.v - a.v)
     .map(
       ({ c, v }) =>
-        `<li><span>${esc(c)} <small>${isWant(c) ? 'want' : 'need'}${focus.includes(c) ? ', cutting back' : ''}</small></span><b>${formatMoney(v)}</b></li>`,
+        `<li><span>${esc(catLabel(c))} <small>${isWant(c) ? t('want') : t('need')}${focus.includes(c) ? t(', cutting back') : ''}</small></span><b>${formatMoney(v)}</b></li>`,
     )
     .join('');
 }
 
 function budgetStep(d: Draft, h: SpendingHistory | null): string {
-  const input = `<div class="money-input"><span>$</span><input name="budget" type="number" min="1" step="1" required value="${d.budget}" aria-label="Monthly budget" /></div>`;
+  const input = `<div class="money-input"><span>$</span><input name="budget" type="number" min="1" step="1" required value="${d.budget}" aria-label="${t('Monthly budget')}" /></div>`;
   const preview = `
-    <p class="q">Your category limits</p>
-    <p class="hint">${h ? 'Shaped by where your money actually goes.' : 'A typical split.'} They update as you change the budget.</p>
+    <p class="q">${t('Your category limits')}</p>
+    <p class="hint">${h ? t('Shaped by where your money actually goes.') : t('A typical split.')} ${t('They update as you change the budget.')}</p>
     <ul class="limit-preview" id="limit-preview">${limitPreview(d.budget, d.focus, h)}</ul>`;
 
   if (!h) {
     return `
-      <h2>What's your monthly budget?</h2>
-      <p class="hint">How much can you spend each month after savings?</p>
+      <h2>${t("What's your monthly budget?")}</h2>
+      <p class="hint">${t('How much can you spend each month after savings?')}</p>
       ${input}
       <div class="chips">
-        ${[1000, 2000, 3000, 5000].map((v) => `<button type="button" class="chip" data-budget="${v}" aria-pressed="false">$${v.toLocaleString()}</button>`).join('')}
+        ${[1000, 2000, 3000, 5000].map((v) => `<button type="button" class="chip" data-budget="${v}" aria-pressed="false">$${v.toLocaleString('en-US')}</button>`).join('')}
       </div>
       ${preview}`;
   }
@@ -125,29 +127,29 @@ function budgetStep(d: Draft, h: SpendingHistory | null): string {
   const top = CATEGORIES.filter((c) => h.byCategory[c] > 0)
     .sort((a, b) => h.byCategory[b] - h.byCategory[a])
     .slice(0, 3);
-  const period = h.partial ? 'So far this month' : `Over the last ${h.months === 1 ? 'month' : `${h.months} months`}`;
+  const period = h.partial ? t('So far this month') : tp('Over the last month', 'Over the last {n} months', h.months);
   const options = [
-    { label: 'Match my spending', value: roundBudget(h.total) },
-    { label: 'Save 10%', value: roundBudget(h.total * 0.9), suggested: true },
-    { label: 'Save 20%', value: roundBudget(h.total * 0.8) },
+    { label: t('Match my spending'), value: roundBudget(h.total) },
+    { label: t('Save 10%'), value: roundBudget(h.total * 0.9), suggested: true },
+    { label: t('Save 20%'), value: roundBudget(h.total * 0.8) },
   ];
   return `
-    <h2>What's your monthly budget?</h2>
+    <h2>${t("What's your monthly budget?")}</h2>
     <div class="spend-summary">
-      <p>${period}, you spent about <b>${formatMoney(h.total)}</b>${h.partial ? '' : ' a month'}.</p>
+      <p>${h.partial ? t('{period}, you spent about <b>{amount}</b>.', { period, amount: formatMoney(h.total) }) : t('{period}, you spent about <b>{amount}</b> a month.', { period, amount: formatMoney(h.total) })}</p>
       <div class="nw">
-        <div class="need"><small>Needs</small><b>${formatMoney(h.total - wants)}</b></div>
-        <div class="want"><small>Wants</small><b>${formatMoney(wants)}</b></div>
+        <div class="need"><small>${t('Needs')}</small><b>${formatMoney(h.total - wants)}</b></div>
+        <div class="want"><small>${t('Wants')}</small><b>${formatMoney(wants)}</b></div>
       </div>
-      <p class="hint">Biggest: ${top.map((c) => `${esc(c)} ${formatMoney(h.byCategory[c])}`).join(' &middot; ')}</p>
+      <p class="hint">${t('Biggest: {list}', { list: top.map((c) => `${esc(catLabel(c))} ${formatMoney(h.byCategory[c])}`).join(' &middot; ') })}</p>
     </div>
-    <p class="hint">We suggest a budget about 10% under what you spend now. Pick one or type your own.</p>
+    <p class="hint">${t('We suggest a budget about 10% under what you spend now. Pick one or type your own.')}</p>
     ${input}
     <div class="chips">
       ${options
         .map(
           (o) =>
-            `<button type="button" class="chip" data-budget="${o.value}" aria-pressed="false">${o.label} &middot; ${formatMoney(o.value).replace('.00', '')}${o.suggested ? ' <small class="tag">suggested</small>' : ''}</button>`,
+            `<button type="button" class="chip" data-budget="${o.value}" aria-pressed="false">${o.label} &middot; ${formatMoney(o.value).replace('.00', '')}${o.suggested ? ` <small class="tag">${t('suggested')}</small>` : ''}</button>`,
         )
         .join('')}
     </div>
@@ -158,35 +160,35 @@ function stepBody(d: Draft): string {
   switch (d.step) {
     case 0:
       return `
-        <h2>Choose your buddy</h2>
+        <h2>${t('Choose your buddy')}</h2>
         <div class="avatar-pick">
           ${CHARACTERS.map(
             (c) => `
             <label class="pick">
-              <input type="radio" name="character" value="${c.id}" aria-label="${c.label}" ${c.id === d.character ? 'checked' : ''} />
+              <input type="radio" name="character" value="${c.id}" aria-label="${charLabel(c.id)}" ${c.id === d.character ? 'checked' : ''} />
               ${renderAvatar(c.id, 'happy')}
             </label>`,
           ).join('')}
         </div>
-        <label class="field">Give your buddy a name
-          <input name="name" required maxlength="20" value="${esc(d.name)}" placeholder="e.g. Penny" />
+        <label class="field">${t('Give your buddy a name')}
+          <input name="name" required maxlength="20" value="${esc(d.name)}" placeholder="${t('e.g. Penny')}" />
         </label>`;
     default:
       return `
-        <h2>Set your goals</h2>
-        <p class="hint">Two quick questions. You can change them later in Profile &amp; Settings.</p>
-        <p class="q">1. What do you want to spend less on?</p>
-        <p class="hint">Each one gets a limit 20% smaller than usual. Going over it makes your buddy one step sadder.</p>
+        <h2>${t('Set your goals')}</h2>
+        <p class="hint">${t('Two quick questions. You can change them later in Profile &amp; Settings.')}</p>
+        <p class="q">${t('1. What do you want to spend less on?')}</p>
+        <p class="hint">${t('Each one gets a limit 20% smaller than usual. Going over it makes your buddy one step sadder.')}</p>
         <div class="chips">
           ${FOCUSABLE.map(
-            (c) => `<label class="chip"><input type="checkbox" name="focus" value="${esc(c)}" ${d.focus.includes(c) ? 'checked' : ''} />${esc(c)}</label>`,
+            (c) => `<label class="chip"><input type="checkbox" name="focus" value="${esc(c)}" ${d.focus.includes(c) ? 'checked' : ''} />${esc(catLabel(c))}</label>`,
           ).join('')}
         </div>
-        <p class="q">2. What's your main goal?</p>
-        <p class="hint">We'll suggest a matching tip in Grow Your Money.</p>
+        <p class="q">${t("2. What's your main goal?")}</p>
+        <p class="hint">${t("We'll suggest a matching tip in Grow Your Money.")}</p>
         <div class="options">
           ${GOALS.map(
-            (g) => `<label class="option"><input type="radio" name="goal" value="${esc(g)}" ${g === d.goal ? 'checked' : ''} />${esc(g)}</label>`,
+            (g) => `<label class="option"><input type="radio" name="goal" value="${esc(g)}" ${g === d.goal ? 'checked' : ''} />${esc(goalLabel(g))}</label>`,
           ).join('')}
         </div>`;
   }
@@ -219,16 +221,16 @@ export function renderOnboarding(
     <main class="onboard card">
       <div class="onboard-head">
         ${brand()}
-        ${cancel ? `<button type="button" class="icon" id="cancel" aria-label="Close">${LINE.close}</button>` : ''}
+        ${cancel ? `<button type="button" class="icon" id="cancel" aria-label="${t('Close')}">${LINE.close}</button>` : ''}
       </div>
       <ol class="steps">
-        ${STEPS.map((s, i) => `<li class="${i < d.step ? 'done' : ''}${i === d.step ? ' current' : ''}"><span>${i + 1}</span>${s}</li>`).join('')}
+        ${STEPS.map((s, i) => `<li class="${i < d.step ? 'done' : ''}${i === d.step ? ' current' : ''}"><span>${i + 1}</span>${t(s)}</li>`).join('')}
       </ol>
       <form id="step-form">
         ${body}
         <div class="actions">
-          ${d.step > 0 ? '<button type="button" class="secondary" id="back">Back</button>' : ''}
-          ${d.step === SPENDING && !spendingDone ? '' : `<button type="submit">${d.step === STEPS.length - 1 ? "Let's go!" : 'Next'}</button>`}
+          ${d.step > 0 ? `<button type="button" class="secondary" id="back">${t('Back')}</button>` : ''}
+          ${d.step === SPENDING && !spendingDone ? '' : `<button type="submit">${d.step === STEPS.length - 1 ? t("Let's go!") : t('Next')}</button>`}
         </div>
       </form>
     </main>`;
@@ -275,13 +277,17 @@ export function renderOnboarding(
       d.imported = statement.expenses;
       d.importedIncome = statement.income;
       const top = topCategory(d.imported);
-      const deposits = d.importedIncome.length ? ` and ${d.importedIncome.length} deposit${d.importedIncome.length === 1 ? '' : 's'}` : '';
-      d.importMsg = `Imported ${d.imported.length} purchases${deposits}.${top ? ` Outside of bills, you spend the most on ${top.category} (${formatMoney(top.total)}).` : ''}`;
+      const count = d.imported.length;
+      const nd = d.importedIncome.length;
+      const base = nd
+        ? tp('Imported {count} purchases and {n} deposit.', 'Imported {count} purchases and {n} deposits.', nd, { count })
+        : t('Imported {count} purchases.', { count });
+      d.importMsg = base + (top ? ' ' + t('Outside of bills, you spend the most on {category} ({amount}).', { category: catLabel(top.category), amount: formatMoney(top.total) }) : '');
       d.importError = false;
     } catch (err) {
       d.imported = [];
       d.importedIncome = [];
-      d.importMsg = err instanceof Error ? err.message : 'Could not read that file.';
+      d.importMsg = err instanceof Error ? err.message : t('Could not read that file.');
       d.importError = true;
     }
     rerender();

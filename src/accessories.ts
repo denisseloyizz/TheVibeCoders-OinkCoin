@@ -1,3 +1,4 @@
+import { T } from './i18n';
 import type { Character, Equipped, Slot } from './types';
 
 export interface Item {
@@ -38,39 +39,39 @@ const flowerCrown = () =>
 
 export const ITEMS: Item[] = [
   {
-    id: 'party-hat', name: 'Party Hat', slot: 'hat', price: 3,
+    id: 'party-hat', name: T('Party Hat'), slot: 'hat', price: 3,
     art: () => `<path d="M-16 0 L0 -44 L16 0Z" fill="#ff5c9a"/><path d="M-11 -14 H11 M-6 -28 H6" stroke="#ffd23f" stroke-width="4"/><circle cy="-46" r="5" fill="#ffd23f"/>`,
   },
   {
-    id: 'beanie', name: 'Beanie', slot: 'hat', price: 3,
+    id: 'beanie', name: T('Beanie'), slot: 'hat', price: 3,
     art: () => `<path d="M-30 0 C-30 -36 30 -36 30 0Z" fill="#5b8def"/><rect x="-32" y="-8" width="64" height="11" rx="5" fill="#3b6fd8"/><circle cy="-31" r="7" fill="#fff"/>`,
   },
-  { id: 'flower-crown', name: 'Flower Crown', slot: 'hat', price: 6, art: flowerCrown },
+  { id: 'flower-crown', name: T('Flower Crown'), slot: 'hat', price: 6, art: flowerCrown },
   {
-    id: 'cowboy', name: 'Cowboy Hat', slot: 'hat', price: 6,
+    id: 'cowboy', name: T('Cowboy Hat'), slot: 'hat', price: 6,
     art: () => `<path d="M-20 -4 C-22 -32 -6 -34 0 -25 C6 -34 22 -32 20 -4Z" fill="#b97a45"/><rect x="-20" y="-11" width="40" height="5" fill="#6b3e1f"/><path d="M-44 -8 Q-32 4 0 3 Q32 4 44 -8 Q38 8 0 8 Q-38 8 -44 -8Z" fill="#a8693a"/>`,
   },
   {
-    id: 'top-hat', name: 'Top Hat', slot: 'hat', price: 9,
+    id: 'top-hat', name: T('Top Hat'), slot: 'hat', price: 9,
     art: () => `<rect x="-34" y="-6" width="68" height="8" rx="4" fill="#2b2328"/><rect x="-20" y="-46" width="40" height="42" rx="3" fill="#2b2328"/><rect x="-20" y="-15" width="40" height="7" fill="#e5487f"/>`,
   },
   {
-    id: 'crown', name: 'Crown', slot: 'hat', price: 12,
+    id: 'crown', name: T('Crown'), slot: 'hat', price: 12,
     art: () => `<path d="M-24 0 V-22 L-12 -10 L0 -30 L12 -10 L24 -22 V0Z" fill="#ffc93c" stroke="#d99a00" stroke-width="2" stroke-linejoin="round"/><circle cy="-8" r="3.5" fill="#ff5c9a"/><circle cx="-14" cy="-6" r="2.5" fill="#5b8def"/><circle cx="14" cy="-6" r="2.5" fill="#3ccf91"/>`,
   },
-  { id: 'round-glasses', name: 'Round Glasses', slot: 'eyes', price: 3, art: roundGlasses },
-  { id: 'sunglasses', name: 'Sunglasses', slot: 'eyes', price: 6, art: sunglasses },
-  { id: 'heart-glasses', name: 'Heart Glasses', slot: 'eyes', price: 6, art: heartGlasses },
+  { id: 'round-glasses', name: T('Round Glasses'), slot: 'eyes', price: 3, art: roundGlasses },
+  { id: 'sunglasses', name: T('Sunglasses'), slot: 'eyes', price: 6, art: sunglasses },
+  { id: 'heart-glasses', name: T('Heart Glasses'), slot: 'eyes', price: 6, art: heartGlasses },
   {
-    id: 'bow-tie', name: 'Bow Tie', slot: 'neck', price: 3,
+    id: 'bow-tie', name: T('Bow Tie'), slot: 'neck', price: 3,
     art: () => `<path d="M0 0 L-15 -9 L-15 9Z M0 0 L15 -9 L15 9Z" fill="#e5487f" stroke="#c93468" stroke-width="1.5" stroke-linejoin="round"/><rect x="-4.5" y="-4.5" width="9" height="9" rx="2.5" fill="#c93468"/>`,
   },
   {
-    id: 'scarf', name: 'Scarf', slot: 'neck', price: 6,
+    id: 'scarf', name: T('Scarf'), slot: 'neck', price: 6,
     art: () => `<path d="M13 4 l4 22 l9 -2 l-5 -21Z" fill="#ef4565"/><path d="M-30 -4 Q0 8 30 -4 L30 4 Q0 16 -30 4Z" fill="#ef4565"/><path d="M-20 -1 v8 M-6 2 v9 M8 2 v9 M22 -1 v8" stroke="#ffc93c" stroke-width="3"/>`,
   },
   {
-    id: 'gold-chain', name: 'Gold Chain', slot: 'neck', price: 9,
+    id: 'gold-chain', name: T('Gold Chain'), slot: 'neck', price: 9,
     art: () => `<path d="M-22 -6 Q0 14 22 -6" stroke="#e8a200" stroke-width="2.5" fill="none" stroke-dasharray="3 2"/><circle cy="10" r="7.5" fill="#ffc93c" stroke="#d98a00" stroke-width="2"/><circle cy="10" r="3.8" fill="none" stroke="#e8a200" stroke-width="1.2"/>`,
   },
 ];

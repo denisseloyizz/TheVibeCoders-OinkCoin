@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import { MOODS, type Care, type Mood } from './types';
 
 export type CareAction = 'feed' | 'play' | 'pet';
@@ -34,8 +35,8 @@ export function careMood(base: Mood, c: Care): Mood {
 }
 
 export function careNote(name: string, c: Care): string | null {
-  if (c.hunger < 25) return `${name} is hungry. Tap Feed.`;
-  if (c.fun < 25) return `${name} is bored. Try Play.`;
-  if (c.love < 25) return `${name} could use some attention. Tap Pet.`;
+  if (c.hunger < 25) return t('{name} is hungry. Tap Feed.', { name });
+  if (c.fun < 25) return t('{name} is bored. Try Play.', { name });
+  if (c.love < 25) return t('{name} could use some attention. Tap Pet.', { name });
   return null;
 }
