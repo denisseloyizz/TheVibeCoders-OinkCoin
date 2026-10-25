@@ -499,3 +499,57 @@ button.link:hover { background: none; text-decoration: underline; }
 .history-body p { margin: 0 0 0.2rem; font-size: 0.9rem; }
 .history-body small { color: var(--muted); }
 .history li.mood-dead .history-pet { opacity: 0.75; }
+
+/* Buddy speech bubble and chat */
+.oink-bubble {
+  position: relative; width: fit-content; max-width: 92%; margin: 0.4rem auto 0.9rem;
+  background: #fff; border: 2px solid var(--pink); border-radius: 18px; padding: 0.65rem 1rem;
+  font-weight: 600; font-size: 0.95rem; line-height: 1.35; color: var(--text); box-shadow: 0 4px 14px rgba(229, 72, 127, 0.14);
+}
+.oink-bubble::after {
+  content: ''; position: absolute; left: 50%; bottom: -9px; width: 14px; height: 14px; background: #fff;
+  border-right: 2px solid var(--pink); border-bottom: 2px solid var(--pink); transform: translateX(-50%) rotate(45deg);
+}
+.mood-happy .oink-bubble, .mood-okay .oink-bubble { border-color: var(--gold); }
+.mood-happy .oink-bubble::after, .mood-okay .oink-bubble::after { border-color: var(--gold); }
+.mood-angry .oink-bubble, .mood-dead .oink-bubble { border-color: var(--over); }
+.mood-angry .oink-bubble::after, .mood-dead .oink-bubble::after { border-color: var(--over); }
+.oink-bubble.talk { animation: bubble-pop 0.35s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes bubble-pop { from { transform: scale(0.88); opacity: 0.4; } to { transform: scale(1); opacity: 1; } }
+
+.chat { margin-top: 1rem; text-align: left; border-top: 1px solid var(--line); padding-top: 0.9rem; }
+.chat-log { display: flex; flex-direction: column; gap: 0.4rem; max-height: 220px; overflow-y: auto; }
+.chat-log:empty { display: none; }
+.chat-log .msg { margin: 0; padding: 0.5rem 0.8rem; border-radius: 14px; max-width: 85%; font-size: 0.9rem; overflow-wrap: anywhere; }
+.chat-log .msg.you { align-self: flex-end; background: var(--text); color: #fff; border-bottom-right-radius: 4px; }
+.chat-log .msg.oink { align-self: flex-start; background: var(--pink-soft); border-bottom-left-radius: 4px; }
+.chat-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.7rem 0; }
+.chat-chip {
+  background: #fff; color: var(--text); border: 1px solid var(--line); border-radius: 999px;
+  padding: 0.3rem 0.75rem; font-size: 0.8rem; font-weight: 500;
+}
+.chat-chip:hover { background: var(--pink-soft); }
+.chat-form { display: flex; gap: 0.5rem; }
+.chat-form input { flex: 1; min-width: 0; }
+.chat-form button { flex: none; }
+@media (prefers-reduced-motion: reduce) { .oink-bubble.talk { animation: none; } }
+
+/* Reply button inside the home bubble */
+.bubble-text { display: block; }
+.oink-bubble .bubble-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.bubble-reply {
+  display: inline-flex; align-items: center; gap: 0.3rem; margin-top: 0.45rem;
+  background: var(--pink-soft); color: var(--pink-deep); border-radius: 999px; padding: 0.25rem 0.75rem; font-size: 0.8rem;
+}
+.bubble-reply:hover { background: #f8d3e1; }
+.bubble-reply svg { width: 15px; height: 15px; }
+
+/* Chat page */
+.chat-page .chat { border-top: 0; padding-top: 0; }
+.chat-page .chat-log { max-height: 45vh; }
+.chat-pet { width: 150px; margin: 0.4rem auto 0; }
+.chat-pet .avatar { display: block; width: 100%; height: auto; }
+
+/* Keep the bubble from taking over the screen */
+.oink-bubble { max-height: 9rem; overflow-y: auto; overscroll-behavior: contain; }
+.chat-page .oink-bubble { max-height: 30vh; }

@@ -5,6 +5,7 @@ import { renderAvatar } from './avatar';
 import { bankEnabled, connectBank, deleteServerAccount, disconnectBank, isOAuthReturn, resumeBankLink, syncBank } from './bank';
 import { analyze, formatMoney, localDateKey, pastMessage, type Analysis } from './budget';
 import { applyAction, careMood, careNote, currentCare, type CareAction } from './care';
+import { buddyPhrase, moneyTier, reply, SUGGESTIONS, type ChatContext, type ChatMessage } from './chat';
 import { ICONS, LINE, line } from './icons';
 import { renderLearn } from './learn';
 import { brand } from './logo';
@@ -17,7 +18,7 @@ import { renderStore } from './store';
 import { CATEGORIES, type Care, type Category, type Expense, type Mood, type Profile } from './types';
 import { esc } from './util';
 
-type View = 'buddy' | 'history' | 'report' | 'store' | 'settings' | 'learn';
+type View = 'buddy' | 'chat' | 'history' | 'report' | 'store' | 'settings' | 'learn';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const state = emptyState();
@@ -33,11 +34,19 @@ let viewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedCat: Category | null = null;
 let moneyMsg = '';
 let reactTimer = 0;
+// The buddy's speech bubble is picked once per money situation so it doesn't change on every redraw.
+let bubbleKey = '';
+let bubbleText = '';
+let chatLog: ChatMessage[] = [];
+const CHAT_LIMIT = 30;
 
 const MOOD_LABEL: Record<Mood, string> = { happy: 'Happy', okay: 'Okay', sad: 'Sad', angry: 'Angry', dead: 'Fainted' };
 
+const CHAT_ICON = line('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.4A8 8 0 1 1 21 12z"/><path d="M9 11h6M9 14h3"/>');
+
 const MENU: { view: View; label: string; icon: string }[] = [
   { view: 'buddy', label: 'Budget Buddy', icon: LINE.pet },
+  { view: 'chat', label: 'Chat with Oink', icon: CHAT_ICON },
   { view: 'history', label: 'Pet History', icon: line('<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>') },
   { view: 'report', label: 'Full Report', icon: line('<path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/>') },
   { view: 'store', label: 'Store', icon: line('<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>') },
@@ -154,6 +163,8 @@ function render(): void {
   if (stateOwner !== user.email) {
     Object.assign(state, loadState(user.email));
     stateOwner = user.email;
+    chatLog = [];
+    bubbleKey = '';
     autoSynced = false;
     bankMsg = '';
     view = 'buddy';
@@ -230,6 +241,67 @@ function freshStartMessage(profile: Profile): string {
   return `A fresh ${month} for ${profile.name}! Add an expense or sync your bank to get started.`;
 }
 
+function chatContext(profile: Profile): ChatContext {
+  const a = analyze(profile, state.expenses);
+  return { profile, state, a, mood: careMood(a.mood, currentCare(state.care)) };
+}
+
+/** The bubble keeps its line until the month's money situation or the mood changes. */
+function currentBubble(profile: Profile, a: Analysis, mood: Mood): string {
+  const key = `${moneyTier(a, profile.budget)}:${mood}:${a.monthKey}`;
+  if (key !== bubbleKey) {
+    bubbleKey = key;
+    bubbleText = buddyPhrase({ profile, state, a, mood });
+  }
+  return bubbleText;
+}
+
+const chatMessageHtml = (m: ChatMessage) => `<p class="msg ${m.from}">${esc(m.text)}</p>`;
+
+function chatHtml(profile: Profile): string {
+  return `
+    <div class="chat">
+      <div class="chat-log" id="chat-log" aria-live="polite">${chatLog.map(chatMessageHtml).join('')}</div>
+      <div class="chat-chips">${SUGGESTIONS.map((s) => `<button type="button" class="chat-chip" data-ask="${esc(s)}">${esc(s)}</button>`).join('')}</div>
+      <form class="chat-form" id="chat-form">
+        <input name="q" type="text" maxlength="200" autocomplete="off" placeholder="Ask ${esc(profile.name)} about your money" aria-label="Message ${esc(profile.name)}" />
+        <button type="submit">Send</button>
+      </form>
+    </div>`;
+}
+
+/** Adds the question and the buddy's answer without redrawing, so typing and scroll position survive. */
+function askBuddy(profile: Profile, question: string): void {
+  const text = question.trim().slice(0, 200);
+  if (!text) return;
+  const answer = reply(text, chatContext(profile));
+  chatLog = [...chatLog, { from: 'you' as const, text }, { from: 'oink' as const, text: answer }].slice(-CHAT_LIMIT);
+  bubbleText = answer;
+
+  const log = app.querySelector<HTMLElement>('#chat-log');
+  if (log) {
+    log.insertAdjacentHTML('beforeend', chatMessageHtml({ from: 'you', text }) + chatMessageHtml({ from: 'oink', text: answer }));
+    log.scrollTop = log.scrollHeight;
+  }
+  const bubble = app.querySelector<HTMLElement>('#bubble');
+  if (bubble) {
+    bubble.textContent = answer;
+    bubble.classList.remove('talk');
+    void bubble.offsetWidth; // restart the pop animation
+    bubble.classList.add('talk');
+  }
+}
+
+function chatPageHtml(profile: Profile, a: Analysis, mood: Mood): string {
+  return `
+    <section class="card pet-card chat-page mood-${mood}">
+      <div class="oink-bubble" id="bubble" role="status" aria-live="polite">${esc(currentBubble(profile, a, mood))}</div>
+      <div class="chat-pet">${renderAvatar(profile.character, mood, state.equipped)}</div>
+      <div class="pet-name"><h2>${esc(profile.name)}</h2><span class="mood-badge">${MOOD_LABEL[mood]}</span></div>
+      ${chatHtml(profile)}
+    </section>`;
+}
+
 function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): string {
   const base = view.spent === 0 ? freshStartMessage(profile) : view.message;
   const message = mood === 'dead' ? base : (careNote(profile.name, care) ?? base);
@@ -245,6 +317,10 @@ function homeHtml(profile: Profile, view: Analysis, care: Care, mood: Mood): str
         <button class="link" data-view="history">Past months</button>
       </div>
       <p class="speech">${esc(message)}</p>
+      <div class="oink-bubble">
+        <span class="bubble-text">${esc(currentBubble(profile, view, mood))}</span>
+        <button class="bubble-reply" data-view="chat" aria-label="Reply to ${esc(profile.name)}">${CHAT_ICON}Reply</button>
+      </div>
       <div class="ring-stage">
         ${renderArc(view, profile.budget, selectedCat)}
         <button class="pet" id="pet" aria-label="Pet ${esc(profile.name)}" ${dead ? 'disabled' : ''}>${renderAvatar(profile.character, mood, state.equipped)}</button>
@@ -487,6 +563,7 @@ function renderDashboard(profile: Profile): void {
   const mood = careMood(now.mood, care);
   const body = {
     buddy: () => homeHtml(profile, now, care, mood),
+    chat: () => chatPageHtml(profile, now, mood),
     history: () => historyHtml(profile, now, mood),
     report: () => reportHtml(profile, month),
     store: () => renderStore(state, profile),
@@ -617,6 +694,19 @@ function renderDashboard(profile: Profile): void {
     }),
   );
   app.querySelector('#pet')?.addEventListener('click', () => doAction(profile, 'pet'));
+
+  // Chat with the buddy
+  const chatForm = app.querySelector<HTMLFormElement>('#chat-form');
+  chatForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = chatForm.elements.namedItem('q') as HTMLInputElement;
+    askBuddy(profile, input.value);
+    input.value = '';
+    input.focus();
+  });
+  app.querySelectorAll<HTMLButtonElement>('[data-ask]').forEach((b) => b.addEventListener('click', () => askBuddy(profile, b.dataset.ask!)));
+  const chatLogEl = app.querySelector<HTMLElement>('#chat-log');
+  if (chatLogEl) chatLogEl.scrollTop = chatLogEl.scrollHeight;
 
   // Money
   const form = app.querySelector<HTMLFormElement>('#expense-form');
