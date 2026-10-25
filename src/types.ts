@@ -92,6 +92,8 @@ export interface AppState {
   /** Decor placed in the buddy's house, by slot (see house.ts). */
   house: Partial<Record<string, string>>;
   bank: Bank | null;
+  /** True after the first-open app tour has been completed or dismissed. */
+  tutorialSeen: boolean;
   /** When this state was last saved (ms), used to pick the newer copy between device and account. */
   savedAt: number;
 }

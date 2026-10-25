@@ -47,6 +47,7 @@ import {
   type FriendsData,
 } from './social';
 import { renderStore } from './store';
+import { tutorialHtml, tutorialLength } from './tutorial';
 import { CATEGORIES, type Care, type Category, type Expense, type Income, type Mood, type NoticeKind, type Profile } from './types';
 import { esc } from './util';
 
@@ -77,6 +78,7 @@ let viewMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedCat: Category | null = null;
 let moneyMsg = '';
 let reactTimer = 0;
+let tutorialStep = 0;
 
 const MOOD_LABEL: Record<Mood, string> = { happy: 'Happy', okay: 'Okay', sad: 'Sad', angry: 'Angry', dead: 'Fainted' };
 
@@ -659,6 +661,7 @@ function settingsHtml(profile: Profile): string {
         <div><dt>Transactions saved</dt><dd>${state.expenses.length}</dd></div>
       </dl>
       <button id="edit">Edit buddy, budget &amp; goals</button>
+      <button id="restart-tutorial" class="secondary">Take the quick tour</button>
     </section>
 
     <section class="card settings">
@@ -816,7 +819,8 @@ function renderDashboard(profile: Profile): void {
       </div>
     </header>
     ${drawerHtml(profile, mood)}
-    <main class="stack">${body}</main>`;
+    <main class="stack">${body}</main>
+    ${state.tutorialSeen ? '' : tutorialHtml(tutorialStep)}`;
 
   // Opening the list marks everything read (shown highlighted this once).
   if (view === 'notifications' && state.notices.some((n) => !n.read)) {
@@ -836,6 +840,28 @@ function renderDashboard(profile: Profile): void {
   app.querySelector('#clear-notices')?.addEventListener('click', () => {
     state.notices = [];
     persist();
+  });
+
+  const finishTutorial = () => {
+    state.tutorialSeen = true;
+    tutorialStep = 0;
+    saveState(state);
+    render();
+  };
+  app.querySelector('#tutorial-skip')?.addEventListener('click', finishTutorial);
+  app.querySelector('#tutorial-next')?.addEventListener('click', () => {
+    if (tutorialStep >= tutorialLength - 1) return finishTutorial();
+    tutorialStep++;
+    renderDashboard(profile);
+  });
+  app.querySelector('#tutorial-back')?.addEventListener('click', () => {
+    tutorialStep = Math.max(0, tutorialStep - 1);
+    renderDashboard(profile);
+  });
+  app.querySelector('#restart-tutorial')?.addEventListener('click', () => {
+    tutorialStep = 0;
+    state.tutorialSeen = false;
+    renderDashboard(profile);
   });
 
   app.querySelector('#menu')!.addEventListener('click', () => setDrawer(true));

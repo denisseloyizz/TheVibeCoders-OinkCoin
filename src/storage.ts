@@ -45,6 +45,7 @@ export function readState(raw: string | object | null): AppState {
         equipped: parsed.equipped ?? {},
         house: parsed.house ?? {},
         bank: parsed.bank ?? null,
+        tutorialSeen: parsed.tutorialSeen === true,
         savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : 0,
       };
     }
@@ -55,7 +56,7 @@ export function readState(raw: string | object | null): AppState {
 }
 
 export function emptyState(): AppState {
-  return { profile: null, expenses: [], income: [], care: freshCare(), coins: 0, rewards: [], alerts: [], notices: [], owned: [], equipped: {}, house: {}, bank: null, savedAt: 0 };
+  return { profile: null, expenses: [], income: [], care: freshCare(), coins: 0, rewards: [], alerts: [], notices: [], owned: [], equipped: {}, house: {}, bank: null, tutorialSeen: false, savedAt: 0 };
 }
 
 export function saveState(state: AppState): void {
