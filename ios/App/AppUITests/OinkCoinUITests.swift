@@ -194,6 +194,11 @@ final class OinkCoinUITests: XCTestCase {
         try ensureHome()
         XCUIDevice.shared.press(.home)
         sleep(1)
+        // The whole screen (not just the app) shows the icon on the iOS home screen.
+        let homeScreen = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        homeScreen.name = "iOS home screen with the OinkCoin icon"
+        homeScreen.lifetime = .keepAlways
+        add(homeScreen)
         app.activate()
         XCTAssertTrue(replyButton.waitForExistence(timeout: 10), "App should come back to the home screen")
         snap("After returning from background")
