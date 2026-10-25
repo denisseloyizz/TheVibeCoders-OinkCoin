@@ -147,6 +147,35 @@ input:focus, select:focus { outline: none; border-color: var(--pink); box-shadow
 
 .actions { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 1.75rem; }
 
+/* First-open app tour */
+.tutorial-backdrop {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  padding: 1rem; background: rgba(29, 26, 28, 0.56); backdrop-filter: blur(5px);
+  animation: tutorial-fade 0.2s ease-out;
+}
+.tutorial-card {
+  width: min(100%, 420px); padding: 1.35rem; border: 1px solid rgba(255,255,255,.8);
+  border-radius: 24px; background: linear-gradient(155deg, #fff 55%, #fff7fa);
+  box-shadow: 0 24px 80px rgba(29, 26, 28, 0.24); text-align: center;
+}
+.tutorial-topline { display: flex; justify-content: space-between; color: var(--muted); font-size: .7rem; font-weight: 700; letter-spacing: .08em; }
+.tutorial-art {
+  display: grid; place-items: center; width: 92px; height: 92px; margin: 1.4rem auto 1rem;
+  border-radius: 28px; background: radial-gradient(circle at 35% 25%, #fff 0 8%, transparent 9%), linear-gradient(145deg, #fff0f5, #fce3ed);
+  box-shadow: inset 0 0 0 1px rgba(229, 72, 127, .09); font-size: 3.3rem;
+}
+.tutorial-eyebrow { margin: 0 0 .35rem; color: var(--pink-deep); font-size: .68rem; font-weight: 800; letter-spacing: .12em; }
+.tutorial-card h2 { margin-bottom: .55rem; font-size: 1.55rem; letter-spacing: -.04em; }
+.tutorial-copy { min-height: 5.2rem; margin: 0 auto; max-width: 34ch; color: var(--muted); line-height: 1.6; }
+.tutorial-progress { display: flex; justify-content: center; gap: .4rem; margin: 1.3rem 0; }
+.tutorial-progress span { width: 7px; height: 7px; border-radius: 999px; background: #e8e1e4; transition: width .2s, background .2s; }
+.tutorial-progress span.done { background: #f0a8bf; }
+.tutorial-progress span.current { width: 22px; background: var(--pink); }
+.tutorial-actions { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.tutorial-actions > div { display: flex; gap: .5rem; }
+.tutorial-skip { padding-inline: .4rem; color: var(--muted); }
+@keyframes tutorial-fade { from { opacity: 0; } to { opacity: 1; } }
+
 /* Layout */
 .topbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 1rem; }
 .topbar .logo { justify-content: center; }

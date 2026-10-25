@@ -2,6 +2,13 @@
 
 A budget tracker with a virtual buddy (male, female, non-binary, or pig) whose mood depends on how you spend.
 
+## Copyright and usage
+
+Copyright © 2026 TheVibeCoders. All rights reserved. Unless otherwise noted, the original source code,
+design, artwork, and documentation in this repository are owned by TheVibeCoders. No license is granted
+to copy, modify, distribute, or use these materials without prior written permission. Third-party
+components remain subject to their respective licenses; see their package and license notices.
+
 ```sh
 npm install
 npm run dev
